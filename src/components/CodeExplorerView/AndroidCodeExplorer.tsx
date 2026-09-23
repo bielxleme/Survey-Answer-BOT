@@ -63,13 +63,22 @@ export const AndroidCodeExplorer: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center space-x-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <a
+            href="/api/download/android-project.zip"
+            download="ResearchAgent_Android_Project.zip"
+            className="flex items-center space-x-1.5 px-3 py-2 bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-black text-xs rounded-xl shadow-lg shadow-emerald-500/20 transition-all"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>Baixar Projeto Completo (.ZIP)</span>
+          </a>
+
           <button
             onClick={() => setShowInstallModal(true)}
-            className="flex items-center space-x-1.5 px-3 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-emerald-500/20 transition-all"
+            className="flex items-center space-x-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-emerald-400 font-bold text-xs rounded-xl transition-all"
           >
             <Smartphone className="w-3.5 h-3.5" />
-            <span>Instalar no Celular</span>
+            <span>Como Instalar APK</span>
           </button>
 
           <button
@@ -77,7 +86,7 @@ export const AndroidCodeExplorer: React.FC = () => {
             className="flex items-center space-x-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-semibold text-xs rounded-xl transition-colors"
           >
             <Download className="w-3.5 h-3.5" />
-            <span>Baixar Arquivo Atual</span>
+            <span>Baixar Arquivo Selecionado</span>
           </button>
         </div>
       </div>
