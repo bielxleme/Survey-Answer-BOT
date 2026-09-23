@@ -149,49 +149,48 @@ CRITICAL MANDATE:
   });
 });
 
-// Endpoint to download the ready-to-install signed APK file
+// Download do APK nativo (compilado a partir de android/ pelo GitHub Actions).
+// Se não houver cópia local, redireciona para o último GitHub Release.
 app.get(['/api/download/ResearchAgent.apk', '/ResearchAgent.apk'], async (_req: Request, res: Response) => {
   try {
-    const { getOrGenerateApk } = await import('./src/utils/apkGenerator.js');
-    const apkBuffer = await getOrGenerateApk();
-
+    const { findNativeApk, RELEASE_APK_URL } = await import('./src/utils/apkGenerator.js');
+    const apk = findNativeApk();
+    if (!apk) return res.redirect(302, RELEASE_APK_URL);
     res.setHeader('Content-Type', 'application/vnd.android.package-archive');
     res.setHeader('Content-Disposition', 'attachment; filename="ResearchAgent.apk"');
-    res.setHeader('Content-Length', apkBuffer.length.toString());
-    res.setHeader('Cache-Control', 'public, max-age=3600');
-    return res.send(apkBuffer);
+    res.setHeader('Content-Length', apk.length.toString());
+    res.setHeader('Cache-Control', 'no-cache');
+    return res.send(apk);
   } catch (err: any) {
     console.error('Erro ao disponibilizar ResearchAgent.apk:', err);
-    return res.status(500).json({ error: 'Falha ao gerar APK instalável', details: err?.message });
+    return res.status(500).json({ error: 'Falha ao entregar o APK', details: err?.message });
   }
 });
 
-// Endpoint to download the complete native Android Studio project ZIP
+// Download do projeto Android Studio real (pasta android/), sem arquivos de build.
 app.get('/api/download/android-project.zip', async (_req: Request, res: Response) => {
   try {
-    const { ANDROID_CODEBASE } = await import('./src/data/androidCodebase.js');
-    const { ADDITIONAL_PROJECT_FILES } = await import('./src/utils/androidProjectZip.js');
+    const fs = await import('fs');
+    const path = await import('path');
     const JSZip = (await import('jszip')).default;
+    const base = path.resolve(process.cwd(), 'android');
+    if (!fs.existsSync(base)) return res.status(404).json({ error: 'Pasta android/ não encontrada' });
 
     const zip = new JSZip();
-    const root = zip.folder('ResearchAgent-Android');
-    if (!root) {
-      return res.status(500).send('Erro ao inicializar arquivo zip');
-    }
+    const root = zip.folder('ResearchAgent-Android')!;
+    const skip = new Set(['build', '.gradle', '.idea', '.cxx', 'local.properties']);
+    const walk = (dir: string, rel: string) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (skip.has(entry.name)) continue;
+        const abs = path.join(dir, entry.name);
+        const r = rel ? `${rel}/${entry.name}` : entry.name;
+        if (entry.isDirectory()) walk(abs, r);
+        else root.file(r, fs.readFileSync(abs), entry.name === 'gradlew' ? { unixPermissions: '755' } : undefined);
+      }
+    };
+    walk(base, '');
 
-    for (const file of ANDROID_CODEBASE) {
-      root.file(file.path, file.content);
-    }
-    for (const file of ADDITIONAL_PROJECT_FILES) {
-      root.file(file.path, file.content);
-    }
-
-    const zipBuffer = await zip.generateAsync({
-      type: 'nodebuffer',
-      compression: 'DEFLATE',
-      compressionOptions: { level: 6 },
-    });
-
+    const zipBuffer = await zip.generateAsync({ type: 'nodebuffer', platform: 'UNIX', compression: 'DEFLATE', compressionOptions: { level: 6 } });
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader('Content-Disposition', 'attachment; filename="ResearchAgent_Android_Project.zip"');
     res.setHeader('Content-Length', zipBuffer.length.toString());
