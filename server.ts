@@ -149,6 +149,23 @@ CRITICAL MANDATE:
   });
 });
 
+// Endpoint to download the ready-to-install signed APK file
+app.get(['/api/download/ResearchAgent.apk', '/ResearchAgent.apk'], async (_req: Request, res: Response) => {
+  try {
+    const { getOrGenerateApk } = await import('./src/utils/apkGenerator.js');
+    const apkBuffer = await getOrGenerateApk();
+
+    res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+    res.setHeader('Content-Disposition', 'attachment; filename="ResearchAgent.apk"');
+    res.setHeader('Content-Length', apkBuffer.length.toString());
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    return res.send(apkBuffer);
+  } catch (err: any) {
+    console.error('Erro ao disponibilizar ResearchAgent.apk:', err);
+    return res.status(500).json({ error: 'Falha ao gerar APK instalável', details: err?.message });
+  }
+});
+
 // Endpoint to download the complete native Android Studio project ZIP
 app.get('/api/download/android-project.zip', async (_req: Request, res: Response) => {
   try {

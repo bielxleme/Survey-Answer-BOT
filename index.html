@@ -1,6 +1,58 @@
 <!doctype html>
 <html lang="pt-BR">
   <head>
+    <script>
+      /* Suppress Vite HMR WebSocket connection noise in embedded AI Studio iframe */
+      (function() {
+        var origError = console.error;
+        console.error = function() {
+          var first = arguments[0];
+          if (typeof first === 'string' && (first.indexOf('[vite]') !== -1 || first.indexOf('websocket') !== -1)) return;
+          origError.apply(console, arguments);
+        };
+        var origWarn = console.warn;
+        console.warn = function() {
+          var first = arguments[0];
+          if (typeof first === 'string' && (first.indexOf('[vite]') !== -1 || first.indexOf('websocket') !== -1)) return;
+          origWarn.apply(console, arguments);
+        };
+        var OrigWS = window.WebSocket;
+        if (OrigWS) {
+          window.WebSocket = function(url, protocols) {
+            var isHmr = (typeof protocols === 'string' && protocols.indexOf('vite-') !== -1) ||
+                        (Array.isArray(protocols) && protocols.some(function(p) { return typeof p === 'string' && p.indexOf('vite-') !== -1; })) ||
+                        (typeof url === 'string' && (url.indexOf('token=') !== -1 || url.indexOf('vite') !== -1));
+            if (isHmr) {
+              var listeners = {};
+              return {
+                readyState: 1,
+                OPEN: 1,
+                CONNECTING: 0,
+                CLOSING: 2,
+                CLOSED: 3,
+                send: function() {},
+                close: function() {},
+                addEventListener: function(event, cb) {
+                  listeners[event] = listeners[event] || [];
+                  listeners[event].push(cb);
+                  if (event === 'open') setTimeout(function() { try { cb({ type: 'open' }); } catch(e){} }, 0);
+                },
+                removeEventListener: function(event, cb) {
+                  if (listeners[event]) listeners[event] = listeners[event].filter(function(fn) { return fn !== cb; });
+                },
+                dispatchEvent: function() { return true; }
+              };
+            }
+            return new OrigWS(url, protocols);
+          };
+          window.WebSocket.prototype = OrigWS.prototype;
+          window.WebSocket.OPEN = OrigWS.OPEN;
+          window.WebSocket.CONNECTING = OrigWS.CONNECTING;
+          window.WebSocket.CLOSING = OrigWS.CLOSING;
+          window.WebSocket.CLOSED = OrigWS.CLOSED;
+        }
+      })();
+    </script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>Research Agent — Android Auto-Fill & Automation Studio</title>

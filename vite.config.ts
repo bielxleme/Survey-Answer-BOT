@@ -7,6 +7,36 @@ import { VitePWA } from 'vite-plugin-pwa';
 export default defineConfig(() => {
   return {
     plugins: [
+      {
+        name: 'suppress-vite-hmr-noise',
+        transformIndexHtml: {
+          order: 'pre',
+          handler() {
+            return [
+              {
+                tag: 'script',
+                attrs: { type: 'text/javascript' },
+                children: `/* Suppress Vite WebSocket noise in AI Studio preview */
+(function(){
+  var origErr=console.error;
+  console.error=function(){
+    var a=arguments[0];
+    if(typeof a==='string'&&(a.indexOf('[vite]')!==-1||a.indexOf('websocket')!==-1))return;
+    origErr.apply(console,arguments);
+  };
+  var origWarn=console.warn;
+  console.warn=function(){
+    var a=arguments[0];
+    if(typeof a==='string'&&(a.indexOf('[vite]')!==-1||a.indexOf('websocket')!==-1))return;
+    origWarn.apply(console,arguments);
+  };
+})();`,
+                injectTo: 'head-prepend',
+              },
+            ];
+          },
+        },
+      },
       react(),
       tailwindcss(),
       VitePWA({
