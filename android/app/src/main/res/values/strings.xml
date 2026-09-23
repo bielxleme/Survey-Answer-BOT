@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Research Agent</string>
+    <string name="accessibility_service_label">Research Agent — preenchimento de pesquisas</string>
+    <string name="accessibility_service_summary">Lê a pesquisa na tela e preenche com os dados do seu perfil, somente quando você ativa pela bolha.</string>
+    <string name="accessibility_service_description">O Research Agent usa a acessibilidade para ler perguntas de pesquisas e formulários na tela, marcar opções, digitar respostas do SEU perfil e tocar em \"Próximo\". Ele só age quando você toca em ATIVAR PESQUISA na bolha flutuante, nunca inventa informações, não interage com bancos, mensagens ou configurações, pausa em CAPTCHA/login/pagamento e mantém seus dados criptografados apenas neste aparelho.</string>
+</resources>

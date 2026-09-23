@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- prancheta -->
+    <path android:fillColor="#FF1E293B" android:pathData="M36,30h36a4,4 0,0 1,4 4v42a4,4 0,0 1,-4 4h-36a4,4 0,0 1,-4 -4v-42a4,4 0,0 1,4 -4z"/>
+    <path android:fillColor="#FF10B981" android:pathData="M46,26h16a3,3 0,0 1,3 3v5h-22v-5a3,3 0,0 1,3 -3z"/>
+    <!-- linhas com checks -->
+    <path android:strokeColor="#FF10B981" android:strokeWidth="3" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M40,46l3,3 5,-6"/>
+    <path android:fillColor="#FFE2E8F0" android:pathData="M52,44h16v3h-16z"/>
+    <path android:strokeColor="#FF10B981" android:strokeWidth="3" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M40,57l3,3 5,-6"/>
+    <path android:fillColor="#FFE2E8F0" android:pathData="M52,55h16v3h-16z"/>
+    <!-- ponto vermelho: pendência -->
+    <path android:fillColor="#FFEF4444" android:pathData="M44,68m-4,0a4,4 0,1 1,8 0a4,4 0,1 1,-8 0"/>
+    <path android:fillColor="#FF94A3B8" android:pathData="M52,66h12v3h-12z"/>
+</vector>
