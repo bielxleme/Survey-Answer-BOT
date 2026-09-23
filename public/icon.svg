@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#020617"/>
+      <stop offset="50%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#022c22"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#10b981"/>
+      <stop offset="50%" stop-color="#14b8a6"/>
+      <stop offset="100%" stop-color="#06b6d4"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#34d399" stop-opacity="0.8"/>
+      <stop offset="100%" stop-color="#059669" stop-opacity="0.2"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#10b981" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+  
+  <!-- Base Background -->
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <rect width="504" height="504" x="4" y="4" rx="108" fill="none" stroke="#10b981" stroke-opacity="0.25" stroke-width="4"/>
+
+  <!-- Outer Pulse Ring -->
+  <circle cx="256" cy="256" r="180" fill="none" stroke="url(#accent)" stroke-width="4" stroke-dasharray="12 12" opacity="0.4"/>
+
+  <!-- Outer Glowing Shield/Badge -->
+  <circle cx="256" cy="256" r="148" fill="#0f172a" stroke="url(#accent)" stroke-width="8" filter="url(#shadow)"/>
+
+  <!-- Android Robot Head Silhouette Stylized -->
+  <g transform="translate(146, 150)">
+    <!-- Antennae -->
+    <line x1="48" y1="20" x2="28" y2="-6" stroke="#10b981" stroke-width="8" stroke-linecap="round"/>
+    <line x1="172" y1="20" x2="192" y2="-6" stroke="#10b981" stroke-width="8" stroke-linecap="round"/>
+    
+    <!-- Dome Head -->
+    <path d="M 20 90 A 90 90 0 0 1 200 90 Z" fill="url(#accent)"/>
+    
+    <!-- Eyes -->
+    <circle cx="68" cy="62" r="10" fill="#020617"/>
+    <circle cx="152" cy="62" r="10" fill="#020617"/>
+
+    <!-- Agent Floating Bubble Spark -->
+    <circle cx="110" cy="148" r="32" fill="#10b981" filter="url(#shadow)"/>
+    <circle cx="110" cy="148" r="22" fill="#ffffff"/>
+    
+    <!-- Checkmark / Auto-Fill Icon in center -->
+    <path d="M 98 148 L 106 156 L 122 140" fill="none" stroke="#047857" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- Bottom Brand Text Monogram -->
+  <text x="256" y="430" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-weight="900" font-size="28" fill="#f8fafc" letter-spacing="4">
+    RESEARCH AGENT
+  </text>
+  <text x="256" y="460" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-weight="700" font-size="14" fill="#34d399" letter-spacing="2">
+    ANDROID AUTO-FILL
+  </text>
+</svg>
