@@ -13,7 +13,9 @@ data class SurveyQuestion(
     val currentValue: String = "",
     val hint: String = "",
     val answered: Boolean = false,
-    val required: Boolean = false
+    val required: Boolean = false,
+    /** Opções genéricas (cartões/botões clicáveis de WebView) — o estado "marcado" pode não ser visível. */
+    val generic: Boolean = false
 ) {
     val key: String get() = Text.questionKey(text)
     val optionTexts: List<String> get() = options.map { it.text }
@@ -45,7 +47,10 @@ data class SurveyPage(
     val completed: Boolean,
     val validationError: String?,
     val guard: ScreenGuard?,
-    val startSurveyButtons: List<ScreenNode>
+    val startSurveyButtons: List<ScreenNode>,
+    /** Botão escolhido por conhecimento aprendido (não por palavra-chave). */
+    val learnedButton: Boolean = false,
+    val buttonConfidence: Double = 0.0
 )
 
 /**
@@ -119,12 +124,18 @@ object SurveyAnalyzer {
     private val PROGRESS_REGEX = Regex("\\b(\\d{1,3})\\s*(?:de|of|/|del)\\s*(\\d{1,3})\\b")
     private val PERCENT_REGEX = Regex("\\b(\\d{1,3})\\s*%")
 
-    fun analyze(s: ScreenSnapshot): SurveyPage {
+    fun analyze(s: ScreenSnapshot, knowledge: UiKnowledge? = null): SurveyPage {
         val text = s.normalizedText
         val guard = detectGuard(s)
         val questions = extractQuestions(s)
-        val next = findButton(s, NEXT_WORDS)
+        var next = findButton(s, NEXT_WORDS)
         val submit = findButton(s, SUBMIT_WORDS)
+        var learned = false
+        var buttonConf = when { next != null || submit != null -> 0.9; else -> 0.0 }
+        // Conhecimento aprendido observando o usuário (qualquer app): botão de avançar sem palavra conhecida
+        if (next == null && submit == null && knowledge != null) {
+            knowledge.bestFor(s, ElementRole.NEXT)?.let { (n, c) -> next = n; learned = true; buttonConf = c }
+        }
         val rawText = s.visibleNodes.joinToString(" ") { it.label }.lowercase()
         val progress = PROGRESS_REGEX.find(rawText)?.let { m ->
             val a = m.groupValues[1].toInt(); val b = m.groupValues[2].toInt()
@@ -140,14 +151,19 @@ object SurveyAnalyzer {
         if (PERCENT_REGEX.containsMatchIn(text) && questions.isNotEmpty()) score += 1
         if (SURVEY_WORDS.any { containsPhrase(text, it) }) score += 2
         if (next != null || submit != null) score += 2
-        val isSurvey = questions.isNotEmpty() && score >= 5
+        // perguntas só "genéricas" (cartões clicáveis) exigem mais um sinal: progresso, palavra de pesquisa ou botão de avançar
+        val onlyGeneric = questions.isNotEmpty() && questions.all { it.generic }
+        val isSurvey = questions.isNotEmpty() && score >= (if (onlyGeneric) 7 else 5)
 
         val starts = s.visibleNodes.filter { n ->
             (n.isClickable || n.kind == WidgetKind.BUTTON) && n.label.length <= 40 &&
                 START_SURVEY_WORDS.any { w -> Text.normalize(n.label).let { it == w || it.startsWith("$w ") } } &&
                 AVOID_WORDS.none { w -> containsPhrase(Text.normalize(n.label), w) }
-        }
-        return SurveyPage(isSurvey, score, questions, next, submit, progress, completed, error, guard, starts)
+        }.toMutableList()
+        // itens aprendidos como "abrir pesquisa/tarefa" e cartões de lista com duração/recompensa
+        knowledge?.bestFor(s, ElementRole.START_ITEM)?.let { (n, _) -> if (starts.none { it.id == n.id }) starts.add(0, n) }
+        if (!isSurvey) UiSemantics.surveyListItems(s).forEach { n -> if (starts.none { it.id == n.id }) starts += n }
+        return SurveyPage(isSurvey, score, questions, next, submit, progress, completed, error, guard, starts, learned, buttonConf)
     }
 
     /** Frases de erro presentes na tela — comparadas antes/depois de avançar (Seção 28). */
@@ -282,7 +298,61 @@ object SurveyAnalyzer {
                 required = qText.contains('*')
             )
         }
+        // 3) Opções genéricas: cartões/botões clicáveis irmãos com rótulos curtos abaixo de uma pergunta
+        //    (pesquisas em WebView costumam usar <div> clicáveis em vez de RadioButton).
+        if (result.none { it.second.options.isNotEmpty() }) {
+            genericOptionGroups(s, visible, consumedText).forEach { result += it }
+        }
         return result.sortedBy { it.first }.map { it.second }.distinctBy { it.text + it.inputNodeId + it.options.size }
+    }
+
+    private val MULTI_HINTS = listOf("selecione todas", "marque todas", "todas que se aplicam", "select all", "all that apply",
+        "pode escolher mais", "mais de uma", "multiple", "varias opcoes", "check all")
+
+    private fun genericOptionGroups(s: ScreenSnapshot, visible: List<ScreenNode>, consumed: MutableSet<Int>): List<Pair<Int, SurveyQuestion>> {
+        val out = ArrayList<Pair<Int, SurveyQuestion>>()
+        val navWords = NEXT_WORDS + SUBMIT_WORDS + AVOID_WORDS + START_SURVEY_WORDS
+        val clickable = visible.filter { n ->
+            n.isClickable && n.isEnabled && !n.isEditable && !n.isOption && n.kind != WidgetKind.DROPDOWN &&
+                n.kind != WidgetKind.SLIDER && !n.bounds.isEmpty
+        }
+        for ((_, group) in clickable.groupBy { it.parentId }) {
+            if (group.size < 2 || group.size > 15) continue
+            val labeled = group.map { it to UiSemantics.effectiveLabel(s, it, 100) }.filter { (_, l) -> l.isNotBlank() && l.length <= 90 }
+            if (labeled.size < 2) continue
+            // não é navegação nem lista de tarefas com recompensa
+            if (labeled.any { (_, l) -> val n = Text.normalize(l); navWords.any { w -> n == Text.normalize(w) } }) continue
+            if (labeled.count { (_, l) -> UiSemantics.isRewardLike(l) } >= 2) continue
+            // opções empilhadas (tops diferentes) ou em grade — não uma barra de abas de uma linha só com ícones
+            val distinctTops = labeled.map { it.first.bounds.top }.distinct().size
+            val sameClass = labeled.map { it.first.className }.distinct().size == 1
+            if (!sameClass) continue
+            if (distinctTops == 1 && labeled.size >= 4 && labeled.all { it.second.length <= 12 }) {
+                // linha única de rótulos curtos: pode ser escala (1..10) — aceita só se forem números/escala
+                if (!labeled.all { (_, l) -> l.trim().all { c -> c.isDigit() } }) continue
+            }
+            val first = labeled.first().first
+            val qText = questionTextBefore(s, visible, first, consumed + labeled.flatMap { (n, _) -> s.descendants(n).map { it.id } + n.id }, null)
+            val qNorm = Text.normalize(qText)
+            if (qText.length < 6) continue
+            val looksQuestion = qText.contains('?') || qText.trim().endsWith(":") || SURVEY_WORDS.any { containsPhrase(qNorm, it) } ||
+                listOf("qual", "quais", "quanto", "quantos", "voce", "como", "com que", "what", "which", "how", "do you", "are you", "please")
+                    .any { containsPhrase(qNorm, it) }
+            if (!looksQuestion) continue
+            val options = labeled.map { (n, l) ->
+                consumed += n.id; s.descendants(n).forEach { consumed += it.id }
+                val st = Text.normalize(n.stateDescription)
+                val checked = n.isChecked || n.isSelected || st.contains("selecionad") || st.contains("selected") ||
+                    st.contains("marcad") || st.contains("checked")
+                QuestionOption(l.trim(), n.id, checked)
+            }
+            val multi = MULTI_HINTS.any { containsPhrase(qNorm, it) }
+            out += visible.indexOf(first) to SurveyQuestion(
+                text = cleanQuestion(qText), type = if (multi) QuestionType.MULTI_CHOICE else QuestionType.SINGLE_CHOICE,
+                options = options, answered = options.any { it.checked }, required = qText.contains('*'), generic = true
+            )
+        }
+        return out
     }
 
     private fun sameOptionFamily(a: WidgetKind, b: WidgetKind): Boolean =

@@ -22,6 +22,9 @@ import kotlinx.coroutines.launch
 /**
  * Tela de intervenção (Seções 6, 7, 15, 26, 29): o usuário responde a pergunta,
  * decide se salva no perfil e resolve conflitos. O agente continua exatamente de onde parou.
+ *
+ * É uma JANELA DE DIÁLOGO: fechar (voltar/✕) apenas esconde a caixa — a pergunta continua pendente
+ * e o app da pesquisa volta ao primeiro plano. Nunca encerra o app da pesquisa nem o agente.
  */
 class InterventionActivity : Activity() {
 
@@ -29,12 +32,12 @@ class InterventionActivity : Activity() {
     private lateinit var ui: Ui
     private lateinit var body: LinearLayout
     private var shownId: Long = -1
+    private var returnPackage: String = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (AppGraph.settings.current.secureScreens) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
-        @Suppress("DEPRECATION")
-        window.statusBarColor = Palette.Bg
+        setFinishOnTouchOutside(false)
         ui = Ui(this)
         body = ui.column(20).apply { setBackgroundColor(Palette.Bg) }
         val root = ScrollView(this).apply {
@@ -43,14 +46,39 @@ class InterventionActivity : Activity() {
             addView(body)
         }
         setContentView(root)
-        ui.applySystemInsets(root)
+        window.setLayout((resources.displayMetrics.widthPixels * 0.94).toInt(), WindowManager.LayoutParams.WRAP_CONTENT)
+        scope.launch {
+            // "Encerrar aplicativo" fecha também esta janela
+            var first = true
+            AgentController.exitSignal.collect { if (!first && it > 0) finish(); first = false }
+        }
         scope.launch {
             InterventionBus.current.collect { p ->
                 if (p == null) {
-                    if (shownId >= 0) finish() else showEmpty()
+                    if (shownId >= 0) closeAndReturn() else showEmpty()
                 } else if (p.intervention.id != shownId) {
                     shownId = p.intervention.id
+                    returnPackage = p.intervention.packageName
                     render(p.intervention)
+                }
+            }
+        }
+    }
+
+    /** Voltar = fechar a caixa SEM responder: a pergunta continua pendente (bolha vermelha). */
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() { closeAndReturn() }
+
+    /** Fecha a janela e devolve o primeiro plano ao app da pesquisa (não ao launcher). */
+    private fun closeAndReturn() {
+        val pkg = returnPackage
+        finish()
+        if (pkg.isNotBlank() && pkg != packageName) {
+            runCatching {
+                packageManager.getLaunchIntentForPackage(pkg)?.let { li ->
+                    // traz a tarefa existente para frente, preservando a tela em que o usuário estava
+                    li.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+                    startActivity(li)
                 }
             }
         }
@@ -64,12 +92,12 @@ class InterventionActivity : Activity() {
     private fun showEmpty() {
         body.removeAllViews()
         body.addView(ui.text("Nenhuma ação pendente.", 18f, Palette.Text, bold = true))
-        ui.fullButton(body, ui.button("Fechar") { finish() }, top = 16)
+        ui.fullButton(body, ui.button("Fechar") { closeAndReturn() }, top = 16)
     }
 
     private fun done(i: Intervention, r: InterventionResult) {
         InterventionBus.respond(i.id, r)
-        finish()
+        closeAndReturn()
     }
 
     private fun render(i: Intervention) {
@@ -78,6 +106,7 @@ class InterventionActivity : Activity() {
         body.addView(ui.text("O agente precisa de você.", 14f, Palette.Text, top = 4))
         body.addView(ui.text("Motivo: ${i.reason.title}", 15f, Palette.Text, bold = true, top = 10))
         body.addView(ui.muted(i.message, 13f))
+        ui.fullButton(body, ui.button("✕ Fechar caixa (resolver na tela)", Palette.Muted, outlined = true) { closeAndReturn() }, top = 8)
 
         val q = i.question
         if (i.reason != InterventionReason.MISSING_INFO || q == null) {
@@ -93,7 +122,7 @@ class InterventionActivity : Activity() {
                 done(i, InterventionResult.Resume)
             }, top = 18)
             ui.fullButton(body, ui.button("Ignorar / aguardar", Palette.Muted, outlined = true) { done(i, InterventionResult.Skip) })
-            ui.fullButton(body, ui.button("PARAR AUTOMAÇÃO", Palette.Red, outlined = true) { AgentController.stop(); finish() })
+            ui.fullButton(body, ui.button("PARAR AUTOMAÇÃO", Palette.Red, outlined = true) { AgentController.stop(); closeAndReturn() })
             return
         }
 
@@ -189,6 +218,6 @@ class InterventionActivity : Activity() {
         ui.buttonRow(body,
             ui.button("Já respondi na tela", Palette.Muted, outlined = true) { done(i, InterventionResult.Resume) },
             ui.button("Ignorar", Palette.Muted, outlined = true) { done(i, InterventionResult.Skip) })
-        ui.fullButton(body, ui.button("PARAR AUTOMAÇÃO", Palette.Red, outlined = true) { AgentController.stop(); finish() })
+        ui.fullButton(body, ui.button("PARAR AUTOMAÇÃO", Palette.Red, outlined = true) { AgentController.stop(); closeAndReturn() })
     }
 }

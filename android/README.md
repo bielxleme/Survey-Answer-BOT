@@ -52,6 +52,22 @@ notifications/   som + notificação quando precisa de você
 ui/              telas com Views nativas (Painel, Meus dados, Logs, Ajustes, Assistente, Intervenção)
 ```
 
+## Evolução autodidata (v2.1)
+
+Menu da bolha: 🔍 Ativar pesquisa · 🧠 Ensinar automação · ⚙️ Automatizar operação · 🎯 Chutar respostas · ⏸ Pausar/▶ Continuar · ⏹ Parar · ❌ Encerrar aplicativo.
+
+- **❌ Encerrar aplicativo** (diferente de Pausar): para a automação, cancela tarefas e observação, remove a bolha e fecha as telas do app. A bolha volta quando você abre o app de novo (opção: também desligar o serviço de acessibilidade).
+- **🎯 Chutar respostas**: com confiança alta o agente executa; com confiança baixa escolhe a alternativa mais provável e registra como **TENTATIVA** (resposta, confiança, origem, resultado). Chute nunca vira verdade e dados sensíveis nunca são chutados.
+- **Observação**: se a pesquisa não for reconhecida, o agente observa os seus toques (texto, tipo, hierarquia, posição relativa e mudança de tela — sem coordenadas fixas e sem campos de senha) e aprende o papel de cada elemento (avançar, iniciar, filtro, aba, lista…). O que aprende vale para qualquer app.
+- **⚙️ Automatizar operação**: grave uma operação uma vez e reproduza depois. Cada passo é localizado por semântica, então funciona em outra resolução e com outros textos. Várias demonstrações separam o que é fixo do que muda e aumentam a confiança.
+- **Caixa de atenção**: "Resolver e responder agora" esconde a caixa para você usar o app da pesquisa normalmente. Depois, toque na bolha → **✓ JÁ RESOLVI**. Fechar a caixa nunca fecha o app da pesquisa.
+- **Já resolvi**: o agente relê a tela, compara com o estado anterior e só continua se identificar a sua resposta. Se não identificar, avisa: "Não consegui identificar sua resposta."
+- **Loops**: o agente tenta outra estratégia, depois a memória e, por fim, pede ajuda. O erro fica registrado.
+- **Faixas de confiança configuráveis** (padrão: 95/80/60), exibidas por pesquisa, pergunta, respostas, botão, decisão e resultado.
+- **Aba 🧠 Aprender**: pesquisas observadas, fluxos, padrões, respostas aprendidas, tentativas, intervenções, confiança média e tarefa atual. Tudo pode ser consultado e excluído.
+
+Nenhuma regra é específica de um app. O Pawns.app serve apenas como exemplo de validação.
+
 ## Segurança e privacidade
 
 - Nunca inventa dados: sem valor no perfil → `ASK_USER`.

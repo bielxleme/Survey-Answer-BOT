@@ -6,6 +6,7 @@ import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import com.researchagent.autofill.AppGraph
 import com.researchagent.autofill.automation.AgentController
+import com.researchagent.autofill.automation.Observer
 import com.researchagent.autofill.overlay.OverlayController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -41,7 +42,8 @@ class SurveyAccessibilityService : AccessibilityService() {
         super.onServiceConnected()
         instance = this
         driver = AccessibilityDriver(this)
-        if (AppGraph.settings.current.bubbleEnabled) showBubble()
+        // Após "Encerrar aplicativo" o serviço fica dormente: a bolha só volta quando o usuário abrir o app
+        if (AppGraph.settings.current.bubbleEnabled && !AgentController.dormant) showBubble()
         AgentController.onServiceConnected(this)
         Log.i(TAG, "Serviço de acessibilidade conectado")
     }
@@ -59,6 +61,15 @@ class SurveyAccessibilityService : AccessibilityService() {
         event ?: return
         val pkg = event.packageName?.toString().orEmpty()
         if (pkg.isNotEmpty() && pkg != packageName) lastPackage = pkg
+        // Observação de ações do usuário (aprendizado) — só quando há modo de observação/intervenção ativo
+        if (Observer.isCapturing) {
+            when (event.eventType) {
+                AccessibilityEvent.TYPE_VIEW_CLICKED, AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED ->
+                    runCatching { Observer.onUserEvent(this, event) }
+                AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED, AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ->
+                    runCatching { Observer.onWindowChanged(this) }
+            }
+        }
         // Só repassa pulsos enquanto o agente estiver ativo (economia de bateria)
         if (AgentController.isActive) _events.tryEmit(event.eventType)
     }

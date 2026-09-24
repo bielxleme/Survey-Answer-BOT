@@ -88,7 +88,17 @@ data class AppSettings(
     val secureScreens: Boolean = true,
     val soundOnIntervention: Boolean = true,
     val onboardingDone: Boolean = false,
-    val bubbleEnabled: Boolean = true
+    val bubbleEnabled: Boolean = true,
+    /** "Chutar respostas": tentativas registradas como TENTATIVA, nunca como verdade. */
+    val guessMode: Boolean = false,
+    /** Observa o usuário quando a pesquisa não é reconhecida. */
+    val observeUnknown: Boolean = true,
+    /** Faixas de confiança configuráveis (Seção 11). */
+    val bandHigh: Double = 0.95,
+    val bandGood: Double = 0.80,
+    val bandMid: Double = 0.60,
+    /** Ao "Encerrar aplicativo", também desativa o serviço de acessibilidade. */
+    val disableServiceOnExit: Boolean = false
 ) {
     companion object {
         /** Seção 18: bancos, mensagens, pagamentos e sistema nunca são automatizados. */
@@ -137,7 +147,13 @@ class SettingsRepository(context: Context, private val store: SecureStore) {
                 secureScreens = o.optBoolean("secureScreens", true),
                 soundOnIntervention = o.optBoolean("soundOnIntervention", true),
                 onboardingDone = o.optBoolean("onboardingDone", false),
-                bubbleEnabled = o.optBoolean("bubbleEnabled", true)
+                bubbleEnabled = o.optBoolean("bubbleEnabled", true),
+                guessMode = o.optBoolean("guessMode", false),
+                observeUnknown = o.optBoolean("observeUnknown", true),
+                bandHigh = o.optDouble("bandHigh", 0.95),
+                bandGood = o.optDouble("bandGood", 0.80),
+                bandMid = o.optDouble("bandMid", 0.60),
+                disableServiceOnExit = o.optBoolean("disableServiceOnExit", false)
             )
         }.getOrDefault(AppSettings())
     }
@@ -162,6 +178,12 @@ class SettingsRepository(context: Context, private val store: SecureStore) {
         o.put("soundOnIntervention", s.soundOnIntervention)
         o.put("onboardingDone", s.onboardingDone)
         o.put("bubbleEnabled", s.bubbleEnabled)
+        o.put("guessMode", s.guessMode)
+        o.put("observeUnknown", s.observeUnknown)
+        o.put("bandHigh", s.bandHigh)
+        o.put("bandGood", s.bandGood)
+        o.put("bandMid", s.bandMid)
+        o.put("disableServiceOnExit", s.disableServiceOnExit)
         prefs.edit().putString("json", o.toString()).apply()
     }
 
@@ -188,7 +210,8 @@ class SettingsRepository(context: Context, private val store: SecureStore) {
 // ═══════════════════════════════════════════════════════════════════
 enum class LogType(val label: String) {
     INFO("Info"), SURVEY("Pesquisa"), ANSWER("Resposta"), USER_ANSWER("Resposta do usuário"),
-    UNKNOWN("Desconhecida"), INTERVENTION("Intervenção"), COMPLETED("Concluída"), ERROR("Erro")
+    UNKNOWN("Desconhecida"), INTERVENTION("Intervenção"), COMPLETED("Concluída"), ERROR("Erro"),
+    OBSERVE("Observação"), LEARN("Aprendizado"), GUESS("Tentativa"), LOOP("Loop"), RESUME("Retomada")
 }
 
 data class LogEntry(

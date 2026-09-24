@@ -48,6 +48,36 @@ object SettingsScreen {
             SurveyAccessibilityService.instance?.let { svc -> if (v) svc.showBubble() else svc.hideBubble() }
         }
 
+        // Aprendizado e tentativas (evolução: Seções 2, 3, 11)
+        val lrn = ui.card(page, "Aprendizado e tentativas")
+        ui.switchRow(lrn, "🎯 Chutar respostas", "Com baixa confiança escolhe a alternativa mais provável e registra como TENTATIVA " +
+            "(nunca como verdade). Dados pessoais sensíveis nunca são chutados.", s.guessMode) { v -> upd { it.copy(guessMode = v) } }
+        ui.switchRow(lrn, "Observar quando não reconhecer a pesquisa", "Aprende com os seus toques (texto, tipo e posição relativa dos " +
+            "elementos — nunca senhas).", s.observeUnknown) { v -> upd { it.copy(observeUnknown = v) } }
+        ui.switchRow(lrn, "Desativar o serviço ao encerrar", "\"❌ Encerrar aplicativo\" também desliga a acessibilidade " +
+            "(será preciso reativá-la nas configurações do Android).", s.disableServiceOnExit) { v -> upd { it.copy(disableServiceOnExit = v) } }
+        lrn.addView(ui.text("Faixas de confiança", 14f, Palette.Text, bold = true, top = 10))
+        val bandsLabel = ui.muted("", 12f)
+        fun showBands() {
+            val c = AppGraph.settings.current
+            bandsLabel.text = "Alta ≥ ${(c.bandHigh * 100).toInt()}% · Boa ≥ ${(c.bandGood * 100).toInt()}% · " +
+                "Intermediária ≥ ${(c.bandMid * 100).toInt()}% · Baixa abaixo"
+        }
+        showBands()
+        lrn.addView(bandsLabel)
+        lrn.addView(ui.muted("Alta", 12f, top = 6))
+        ui.slider(lrn, 85, 100, (s.bandHigh * 100).toInt()) { v ->
+            upd { it.copy(bandHigh = v / 100.0, bandGood = minOf(it.bandGood, (v - 1) / 100.0)) }; showBands()
+        }
+        lrn.addView(ui.muted("Boa", 12f))
+        ui.slider(lrn, 60, 97, (s.bandGood * 100).toInt()) { v ->
+            upd { it.copy(bandGood = minOf(v / 100.0, it.bandHigh - 0.01), bandMid = minOf(it.bandMid, (v - 1) / 100.0)) }; showBands()
+        }
+        lrn.addView(ui.muted("Intermediária", 12f))
+        ui.slider(lrn, 30, 90, (s.bandMid * 100).toInt()) { v ->
+            upd { it.copy(bandMid = minOf(v / 100.0, it.bandGood - 0.01)) }; showBands()
+        }
+
         // Privacidade (Seção 21)
         val priv = ui.card(page, "Privacidade")
         ui.switchRow(priv, "Registrar respostas nos logs", "Campos sensíveis são sempre mascarados.", s.logAnswers) { v -> upd { it.copy(logAnswers = v) } }

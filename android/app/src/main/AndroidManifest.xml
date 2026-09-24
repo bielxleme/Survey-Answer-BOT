@@ -36,6 +36,7 @@
             android:excludeFromRecents="true"
             android:launchMode="singleTask"
             android:taskAffinity="com.researchagent.autofill.intervention"
+            android:theme="@style/Theme.ResearchAgent.Dialog"
             android:windowSoftInputMode="adjustResize" />
 
         <service

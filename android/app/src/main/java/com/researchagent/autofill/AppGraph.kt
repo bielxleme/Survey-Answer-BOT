@@ -9,6 +9,7 @@ import com.researchagent.autofill.core.HybridAnswerProvider
 import com.researchagent.autofill.core.LlmClient
 import com.researchagent.autofill.core.QuestionClassifier
 import com.researchagent.autofill.data.KnowledgeRepository
+import com.researchagent.autofill.data.LearningRepository
 import com.researchagent.autofill.data.LlmProvider
 import com.researchagent.autofill.data.LogEntry
 import com.researchagent.autofill.data.LogRepository
@@ -35,6 +36,8 @@ object AppGraph {
         private set
     lateinit var knowledge: KnowledgeRepository
         private set
+    lateinit var learning: LearningRepository
+        private set
 
     fun init(application: Application) {
         if (::app.isInitialized) return
@@ -45,6 +48,7 @@ object AppGraph {
         logs = LogRepository(store)
         stats = StatsRepository(application)
         knowledge = KnowledgeRepository(store)
+        learning = LearningRepository(store)
         Notifier.createChannels(application)
     }
 

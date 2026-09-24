@@ -45,6 +45,20 @@ class AccessibilityDriver(private val service: SurveyAccessibilityService) : Scr
         ScreenSnapshot(pkg, list.filterNotNull())
     }
 
+    /** Leitura para o observador: não substitui os nós que o agente está usando. */
+    fun snapshotDetached(): ScreenSnapshot? {
+        val root = pickRoot() ?: return null
+        val list = ArrayList<ScreenNode?>()
+        runCatching { traverse(root, -1, 0, list, HashMap()) }
+        return ScreenSnapshot(root.packageName?.toString().orEmpty(), list.filterNotNull())
+    }
+
+    /** Momento da última ação do PRÓPRIO agente — o observador ignora esses cliques. */
+    @Volatile var lastAgentActionAt: Long = 0L
+        private set
+
+    private fun markAgentAction() { lastAgentActionAt = System.currentTimeMillis() }
+
     private fun pickRoot(): AccessibilityNodeInfo? {
         service.rootInActiveWindow?.let { return it }
         return runCatching {
@@ -119,6 +133,7 @@ class AccessibilityDriver(private val service: SurveyAccessibilityService) : Scr
         nodeMap[node.id]?.takeIf { runCatching { it.refresh() }.getOrDefault(false) }
 
     override suspend fun click(node: ScreenNode): Boolean = withContext(Dispatchers.Default) {
+        markAgentAction()
         if (node.fromOcr) return@withContext tap(node.bounds)
         val info = live(node) ?: return@withContext tap(node.bounds)
         if (info.isClickable && info.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return@withContext true
@@ -133,6 +148,7 @@ class AccessibilityDriver(private val service: SurveyAccessibilityService) : Scr
     }
 
     override suspend fun setText(node: ScreenNode, text: String): Boolean = withContext(Dispatchers.Default) {
+        markAgentAction()
         val info = live(node) ?: return@withContext false
         info.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
         if (!info.isFocused) info.performAction(AccessibilityNodeInfo.ACTION_CLICK)
@@ -149,12 +165,14 @@ class AccessibilityDriver(private val service: SurveyAccessibilityService) : Scr
     }
 
     override suspend fun setProgress(node: ScreenNode, value: Float): Boolean = withContext(Dispatchers.Default) {
+        markAgentAction()
         val info = live(node) ?: return@withContext false
         val args = Bundle().apply { putFloat(AccessibilityNodeInfo.ACTION_ARGUMENT_PROGRESS_VALUE, value) }
         info.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SET_PROGRESS.id, args)
     }
 
     override suspend fun scrollForward(): Boolean {
+        markAgentAction()
         val before = snapshot() ?: return false
         val scrollable = nodeMap.values
             .filter { runCatching { it.isScrollable && it.isVisibleToUser }.getOrDefault(false) }
@@ -168,7 +186,7 @@ class AccessibilityDriver(private val service: SurveyAccessibilityService) : Scr
         return after.contentSignature != before.contentSignature
     }
 
-    override suspend fun back(): Boolean = service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+    override suspend fun back(): Boolean { markAgentAction(); return service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK) }
 
     // ── Espera baseada em eventos (Seção 14) ─────────────────────────
     override suspend fun awaitChange(previous: ScreenSnapshot, timeoutMs: Long): ScreenSnapshot? {

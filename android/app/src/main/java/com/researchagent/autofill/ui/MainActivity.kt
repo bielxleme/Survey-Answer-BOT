@@ -61,6 +61,8 @@ class MainActivity : Activity() {
         }
         tab = savedInstanceState?.getInt(EXTRA_TAB) ?: intent?.getIntExtra(EXTRA_TAB, TAB_DASHBOARD) ?: TAB_DASHBOARD
         mode = if (AppGraph.settings.current.onboardingDone) Mode.TABS else Mode.ONBOARDING
+        // abrir o app tira o agente do modo "encerrado" e traz a bolha de volta
+        AgentController.wake()
         buildShell()
         render()
         observe()
@@ -82,6 +84,7 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        AgentController.wake()
         applySecureFlag()
         AppGraph.knowledge.prune(AppGraph.profile.current)
         if (mode == Mode.TABS && tab == TAB_DASHBOARD) render()
@@ -121,7 +124,7 @@ class MainActivity : Activity() {
     private fun buildNav() {
         nav.removeAllViews()
         nav.visibility = if (mode == Mode.TABS) View.VISIBLE else View.GONE
-        listOf("● Painel", "👤 Meus dados", "☰ Logs", "⚙ Ajustes").forEachIndexed { i, label ->
+        listOf("● Painel", "👤 Dados", "☰ Logs", "⚙ Ajustes", "🧠 Aprender").forEachIndexed { i, label ->
             val t = ui.text(label, 13f, if (i == tab) Palette.Green else Palette.Muted, bold = i == tab).apply {
                 gravity = Gravity.CENTER
                 setPadding(0, ui.dp(14), 0, ui.dp(14))
@@ -143,6 +146,7 @@ class MainActivity : Activity() {
                 TAB_PROFILE -> ProfileScreen.build(this, page)
                 TAB_LOGS -> Screens.logs(this, page)
                 TAB_SETTINGS -> SettingsScreen.build(this, page)
+                TAB_LEARNING -> LearningScreen.build(this, page)
                 else -> Screens.dashboard(this, page)
             }
         }
@@ -176,6 +180,13 @@ class MainActivity : Activity() {
         scope.launch { AppGraph.knowledge.pending.collect { scheduleRender(setOf(TAB_DASHBOARD, TAB_PROFILE)) } }
         scope.launch { AppGraph.profile.profile.collect { scheduleRender(setOf(TAB_PROFILE)) } }
         scope.launch { AppGraph.logs.logs.collect { scheduleRender(setOf(TAB_LOGS)) } }
+        scope.launch { AppGraph.learning.stats.collect { scheduleRender(setOf(TAB_LEARNING)) } }
+        scope.launch { AppGraph.learning.task.collect { scheduleRender(setOf(TAB_LEARNING)) } }
+        // ❌ Encerrar aplicativo (pela bolha): fecha também esta tela e remove das recentes
+        scope.launch {
+            val start = AgentController.exitSignal.value
+            AgentController.exitSignal.collect { if (it != start && it > 0) finishAndRemoveTask() }
+        }
     }
 
     // ── Navegação entre modos ────────────────────────────────────────
@@ -285,6 +296,7 @@ class MainActivity : Activity() {
         const val TAB_PROFILE = 1
         const val TAB_LOGS = 2
         const val TAB_SETTINGS = 3
+        const val TAB_LEARNING = 4
         private const val REQ_IMPORT = 11
         private const val REQ_EXPORT = 12
         private const val REQ_NOTIF = 13

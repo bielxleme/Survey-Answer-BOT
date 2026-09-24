@@ -191,7 +191,9 @@ object Screens {
                 LogType.ANSWER -> Palette.confidence(e.confidence)
                 LogType.USER_ANSWER -> Palette.Blue
                 LogType.UNKNOWN, LogType.ERROR -> Palette.Red
-                LogType.INTERVENTION -> Palette.Amber
+                LogType.INTERVENTION, LogType.GUESS -> Palette.Amber
+                LogType.LOOP -> Palette.Red
+                LogType.LEARN, LogType.RESUME -> Palette.Blue
                 else -> Palette.Muted
             }
             val r = ui.row()
