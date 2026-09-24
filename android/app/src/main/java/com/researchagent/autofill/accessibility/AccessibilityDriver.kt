@@ -42,15 +42,20 @@ class AccessibilityDriver(private val service: SurveyAccessibilityService) : Scr
         runCatching { traverse(root, -1, 0, list, map) }
         nodeMap = map
         val pkg = root.packageName?.toString().orEmpty()
-        ScreenSnapshot(pkg, list.filterNotNull())
+        ScreenSnapshot(pkg, list.filterNotNull(), windowTitle = activeWindowTitle())
     }
+
+    /** Título da janela ativa (nome do app/site/atividade), quando o Android informa. */
+    private fun activeWindowTitle(): String = runCatching {
+        service.windows.firstOrNull { it.isActive && it.type == AccessibilityWindowInfo.TYPE_APPLICATION }?.title?.toString()
+    }.getOrNull().orEmpty()
 
     /** Leitura para o observador: não substitui os nós que o agente está usando. */
     fun snapshotDetached(): ScreenSnapshot? {
         val root = pickRoot() ?: return null
         val list = ArrayList<ScreenNode?>()
         runCatching { traverse(root, -1, 0, list, HashMap()) }
-        return ScreenSnapshot(root.packageName?.toString().orEmpty(), list.filterNotNull())
+        return ScreenSnapshot(root.packageName?.toString().orEmpty(), list.filterNotNull(), windowTitle = activeWindowTitle())
     }
 
     /** Momento da última ação do PRÓPRIO agente — o observador ignora esses cliques. */
@@ -192,6 +197,7 @@ class AccessibilityDriver(private val service: SurveyAccessibilityService) : Scr
     override suspend fun awaitChange(previous: ScreenSnapshot, timeoutMs: Long): ScreenSnapshot? {
         val deadline = System.currentTimeMillis() + timeoutMs
         var lastCheck = 0L
+        var changedAt = 0L
         while (System.currentTimeMillis() < deadline) {
             val remaining = deadline - System.currentTimeMillis()
             val gotEvent = withTimeoutOrNull(minOf(500L, remaining.coerceAtLeast(1))) { service.events.first() } != null
@@ -200,10 +206,12 @@ class AccessibilityDriver(private val service: SurveyAccessibilityService) : Scr
             lastCheck = now
             val s = snapshot() ?: continue
             if (s.signature == previous.signature) continue
-            // estabilidade: a tela precisa parar de mudar e não mostrar carregamento
+            if (changedAt == 0L) changedAt = now
+            // estabilidade: a tela precisa parar de mudar e não mostrar carregamento —
+            // mas um indicador de carregamento que nunca some não pode travar o agente (máx. 3 s)
             delay(300)
             val s2 = snapshot() ?: s
-            if (s2.signature == s.signature && !isLoading(s2)) return s2
+            if (s2.signature == s.signature && (!isLoading(s2) || now - changedAt > 3_000)) return s2
         }
         return null
     }

@@ -83,6 +83,8 @@ class OverlayController(private val service: SurveyAccessibilityService) {
         jobs += service.scope.launch { Observer.mode.collect { onStatus(lastStatus) } }
         jobs += service.scope.launch { Observer.recordedCount.collect { if (panel != null && !confirmingExit) renderPanel() } }
         jobs += service.scope.launch { AgentController.flowProgress.collect { onStatus(lastStatus) } }
+        // confirmação visível de cada passo gravado / aviso de toque não capturado
+        jobs += service.scope.launch { Observer.feedback.collect { toastLike(it) } }
     }
 
     fun dispose() {
@@ -186,7 +188,10 @@ class OverlayController(private val service: SurveyAccessibilityService) {
         } else if (!shouldPulse) {
             pulse?.cancel(); pulse = null; bubbleDot.alpha = 1f
         }
-        if (panel != null && !confirmingExit) renderPanel()
+        if (panel != null && !confirmingExit) {
+            val k = keyOf(s)
+            if (k != panelKey) renderPanel() else statusLine?.text = statusText(s)
+        }
     }
 
     // ── Painel / menu da bolha (Seções 19 e 20) ──────────────────────
@@ -206,6 +211,26 @@ class OverlayController(private val service: SurveyAccessibilityService) {
         try { wm.addView(panel, params) } catch (_: Exception) { panel = null; panelParams = null }
     }
 
+    private var showFlows = false
+    private var flowChoices: List<Pair<com.researchagent.autofill.core.Flow, Int?>>? = null
+    private var panelKey = ""
+    private var statusLine: TextView? = null
+
+    /** Lê a tela fora da thread principal (não trava a bolha) e mostra as automações do app. */
+    private fun loadFlowChoices() {
+        flowChoices = null
+        renderPanel()
+        jobs += service.scope.launch {
+            val list = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                runCatching { AgentController.flowsForCurrentApp() }.getOrDefault(emptyList())
+            }
+            flowChoices = list
+            if (panel != null && showFlows && !confirmingExit) renderPanel()
+        }
+    }
+
+    private fun caption(t: String) = text(t, 10.5f, cMuted, top = 2)
+
     /** Intervenção cujo cartão foi ocultado para o usuário resolver na tela. */
     private fun minimizedIntervention(): Intervention? =
         InterventionBus.current.value?.intervention?.takeIf { it.id == cardMinimizedFor }
@@ -213,6 +238,8 @@ class OverlayController(private val service: SurveyAccessibilityService) {
     private fun renderPanel() {
         val root = panel as? ScrollView ?: return
         root.removeAllViews()
+        panelKey = keyOf(lastStatus)
+        statusLine = null
         val s = lastStatus
         val stats = AppGraph.stats.stats.value
         val settings = AppGraph.settings.current
@@ -245,7 +272,7 @@ class OverlayController(private val service: SurveyAccessibilityService) {
         }
 
         if (s.running) {
-            col.addView(text(s.state.label + if (s.message.isNotBlank() && s.message != s.state.label) " — ${s.message}" else "", 12f, cMuted, top = 4))
+            col.addView(text(statusText(s), 12f, cMuted, top = 4).also { statusLine = it })
             col.addView(text("Pesquisa: ${s.surveyIndex}" + (s.pageProgress?.let { "   Página: ${it.first}/${it.second}" } ?: ""), 13f, cText, top = 6))
             if (s.questionsOnPage > 0) col.addView(text("Pergunta: ${s.questionIndex.coerceAtMost(s.questionsOnPage)}/${s.questionsOnPage}", 13f, cText))
             val conf = s.confidence.asMap().filterValues { it > 0 }
@@ -273,48 +300,79 @@ class OverlayController(private val service: SurveyAccessibilityService) {
 
         // 🔍 Ativar pesquisa / ⏸ Pausar / ▶ Continuar
         when {
-            !s.running -> col.addView(button("🔍 ATIVAR PESQUISA", cGreen) {
-                if (!AgentController.start()) toastLike("Serviço de acessibilidade indisponível")
-            })
-            s.paused -> col.addView(button("▶ CONTINUAR", cGreen) { AgentController.resume() })
+            !s.running -> {
+                col.addView(button("🔍 ATIVAR PESQUISA", cGreen) {
+                    closePanel()
+                    if (!AgentController.start()) toastLike("Serviço de acessibilidade indisponível")
+                    else toastLike("Agente ativo — lendo a tela…")
+                })
+                col.addView(caption("Responde sozinho a pesquisa aberta na tela."))
+            }
+            s.paused -> col.addView(button("▶ CONTINUAR", cGreen) { closePanel(); AgentController.resume(); toastLike("Continuando…") })
             else -> col.addView(button("⏸ PAUSAR (mantém o progresso)", cAmber) { AgentController.pause() })
         }
         if (s.intervention != null && minimizedIntervention() == null) {
             col.addView(button("CONTINUAR AUTOMAÇÃO", cGreen) { AgentController.resume() })
         }
 
-        // 🧠 Ensinar automação
-        if (obsMode == Observer.Mode.TEACH || obsMode == Observer.Mode.AUTO) {
-            col.addView(button("⏹ PARAR DE OBSERVAR", cBlue) { AgentController.stopObserving(); toastLike("Observação encerrada") })
-        } else if (obsMode == Observer.Mode.OFF) {
-            col.addView(button("🧠 ENSINAR AUTOMAÇÃO", cBlue) {
-                AgentController.startTeach()
-                toastLike("Observando: faça a pesquisa normalmente. Vou aprender com seus toques.")
-                closePanel()
+        // ▶ Reproduzir automação salva
+        if (AgentController.isFlowRunning) {
+            col.addView(button("⏹ CANCELAR AUTOMAÇÃO", cRed) { AgentController.cancelFlow() })
+        } else if (obsMode != Observer.Mode.RECORD && AppGraph.learning.flows.value.isNotEmpty()) {
+            col.addView(button(if (showFlows) "▼ REPRODUZIR AUTOMAÇÃO" else "▶ REPRODUZIR AUTOMAÇÃO", cPurple) {
+                showFlows = !showFlows
+                if (showFlows) loadFlowChoices() else renderPanel()
             })
+            if (showFlows) {
+                col.addView(button("🔮 ADIVINHAR PELA TELA E REPRODUZIR", cCard) {
+                    closePanel()
+                    toastLike(AgentController.guessAndRunFlow())
+                })
+                val choices = flowChoices
+                when {
+                    choices == null -> col.addView(caption("Procurando automações para este app…"))
+                    choices.isEmpty() -> col.addView(caption("Nenhuma automação salva para o app aberto."))
+                    else -> choices.take(6).forEach { (f, start) ->
+                        val tag = if (start != null) " ✓ passo ${start + 1}" else ""
+                        col.addView(button("▶ ${Observer.displayName(f).take(30)} · ${"%.0f".format(f.confidence * 100)}%$tag", cCard) {
+                            closePanel()
+                            if (!AgentController.runFlow(f, start ?: 0)) toastLike("Não foi possível iniciar a automação")
+                        })
+                    }
+                }
+                col.addView(caption("✓ = combina com esta tela (começa desse passo)."))
+            }
         }
 
-        // ⚙️ Automatizar operação
+        // 🧠 Ensinar pesquisa (observar) — nunca junto com a gravação
+        when (obsMode) {
+            Observer.Mode.TEACH, Observer.Mode.AUTO ->
+                col.addView(button("⏹ PARAR DE OBSERVAR", cBlue) { AgentController.stopObserving(); toastLike("Observação encerrada") })
+            Observer.Mode.OFF -> {
+                col.addView(button("🧠 ENSINAR PESQUISA (observar)", cBlue) {
+                    AgentController.startTeach()
+                    toastLike("Observando: responda a pesquisa normalmente. Vou aprender com seus toques.")
+                    closePanel()
+                })
+                col.addView(caption("Você responde; eu aprendo botões, respostas e como abrir pesquisas. Não cria atalho."))
+            }
+            Observer.Mode.RECORD -> Unit
+        }
+
+        // ⏺ Gravar automação (operação)
         if (obsMode == Observer.Mode.RECORD) {
-            col.addView(button("⏹ SALVAR OPERAÇÃO (${Observer.recordedCount.value})", cRed) {
+            col.addView(button("⏹ SALVAR GRAVAÇÃO (${Observer.recordedCount.value} passos)", cRed) {
                 val name = AgentController.stopObserving()
                 toastLike(if (name != null) "Automação salva: $name" else "Nada foi gravado")
             })
-        } else if (AgentController.isFlowRunning) {
-            col.addView(button("⏹ CANCELAR AUTOMAÇÃO", cRed) { AgentController.cancelFlow() })
-        } else {
-            col.addView(button("⚙️ AUTOMATIZAR OPERAÇÃO (gravar)", cPurple) {
+            col.addView(caption("Cada toque gravado aparece numa mensagem. Sem mensagem = toque não captado."))
+        } else if (obsMode == Observer.Mode.OFF && !AgentController.isFlowRunning) {
+            col.addView(button("⏺ GRAVAR AUTOMAÇÃO (operação)", cPurple) {
                 AgentController.startRecord()
-                toastLike("Gravando: execute a operação no app. Depois toque na bolha → SALVAR OPERAÇÃO.")
+                toastLike("Gravando: faça a sequência no app. Depois: bolha → SALVAR GRAVAÇÃO.")
                 closePanel()
             })
-            val flows = AgentController.flowsForCurrentApp()
-            flows.take(4).forEach { f ->
-                col.addView(button("▶ ${f.name.take(26)} · ${"%.0f".format(f.confidence * 100)}%", cCard) {
-                    closePanel()
-                    if (!AgentController.runFlow(f)) toastLike("Não foi possível iniciar a automação")
-                })
-            }
+            col.addView(caption("Grava uma sequência de toques (ex.: abrir lista → filtro → pesquisa) para repetir com ▶."))
         }
 
         // 🎯 Chutar respostas
@@ -323,6 +381,7 @@ class OverlayController(private val service: SurveyAccessibilityService) {
             toastLike(if (on) "Chutes serão registrados como TENTATIVA" else "Chutar respostas desligado")
             renderPanel()
         })
+        col.addView(caption("Sem certeza: usa suas respostas e dados já salvos; só então escolhe uma opção."))
 
         val row2 = row()
         row2.addView(button("MODO: ${s.mode.label}", cCard) {
@@ -335,6 +394,7 @@ class OverlayController(private val service: SurveyAccessibilityService) {
         row3.addView(button("AJUSTES", cCard) { openApp(MainActivity.TAB_SETTINGS) })
         row3.addView(button("LOGS", cCard) { openApp(MainActivity.TAB_LOGS) })
         row3.addView(button("🧠", cCard) { openApp(MainActivity.TAB_LEARNING) })
+        row3.addView(button("❓", cCard) { openApp(MainActivity.TAB_HELP) })
         col.addView(row3)
         val row4 = row()
         row4.addView(button("FECHAR MENU", cCard) { closePanel() })
@@ -356,7 +416,14 @@ class OverlayController(private val service: SurveyAccessibilityService) {
         panel?.let { p -> if (p.isAttachedToWindow) try { wm.updateViewLayout(p, params) } catch (_: Exception) { } }
     }
 
-    private fun closePanel() { if (panel != null) togglePanel() }
+    private fun closePanel() { if (panel != null) togglePanel(); showFlows = false }
+
+    private fun statusText(s: AgentStatus) =
+        s.state.label + if (s.message.isNotBlank() && s.message != s.state.label) " — ${s.message.take(140)}" else ""
+
+    /** Só reconstrói o menu quando algo relevante muda (reconstruir a cada status perdia toques nos botões). */
+    private fun keyOf(s: AgentStatus) = listOf(s.running, s.paused, s.intervention?.id, s.mode, s.guessMode, s.pageProgress, s.questionsOnPage,
+        Observer.mode.value, Observer.recordedCount.value, AgentController.flowProgress.value != null, cardMinimizedFor).joinToString("|")
 
     /** ❌ ENCERRAR APLICATIVO — pede confirmação no próprio menu (sem diálogos do sistema). */
     private var confirmingExit = false
@@ -407,6 +474,26 @@ class OverlayController(private val service: SurveyAccessibilityService) {
                 r.addView(button("DIGITAR AQUI", cCard) { minimize(i, silent = true); openIntervention() })
                 col.addView(r)
                 col.addView(button("IGNORAR ESTA PERGUNTA", cCard) { InterventionBus.respond(i.id, InterventionResult.Skip) })
+            }
+            InterventionReason.UNKNOWN_SCREEN -> {
+                col.addView(button("✔ É UMA PESQUISA — TENTE MESMO ASSIM", cGreen) {
+                    AgentController.forceSurveyHere(); InterventionBus.respond(i.id, InterventionResult.Resume)
+                })
+                if (AppGraph.learning.flows.value.any { it.packageName == i.packageName }) {
+                    col.addView(button("🔮 REPRODUZIR AUTOMAÇÃO SALVA", cPurple) {
+                        InterventionBus.respond(i.id, InterventionResult.Skip)
+                        toastLike(AgentController.guessAndRunFlow())
+                    })
+                }
+                col.addView(button("🧠 VOU MOSTRAR (observe e aprenda)", cBlue) {
+                    AgentController.startTeach()
+                    InterventionBus.respond(i.id, InterventionResult.Skip)
+                    toastLike("Faça a operação/pesquisa na tela: vou observar e aprender.")
+                })
+                val r = row()
+                r.addView(button("TENTAR DE NOVO", cCard) { InterventionBus.respond(i.id, InterventionResult.Resume) })
+                r.addView(button("⏸ PAUSAR", cCard) { InterventionBus.respond(i.id, InterventionResult.Skip); AgentController.pause() })
+                col.addView(r)
             }
             InterventionReason.CONFIRM_NEXT -> {
                 val r = row()

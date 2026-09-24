@@ -429,6 +429,62 @@ object FlowLearner {
         }
         return best?.let { it.first to it.second }
     }
+
+    data class Start(val flow: Flow, val step: Int, val score: Double)
+
+    /**
+     * "Adivinhar" (Seções 6 e 8): em qual fluxo e passo a tela atual se encaixa, procurando o
+     * ELEMENTO de cada passo na tela (não só a impressão digital). Serve mesmo quando a tela mudou um pouco.
+     */
+    fun bestStart(flows: List<Flow>, s: ScreenSnapshot, kind: ScreenKind? = null, minScore: Double = 0.6): Start? {
+        val fp = UiSemantics.fingerprint(s)
+        var best: Start? = null
+        for (f in flows) {
+            if (f.packageName != s.packageName && f.packageName != "*") continue
+            f.steps.forEachIndexed { i, st ->
+                val m = ElementMatcher.find(s, st.target, st.textVariable, kind) ?: return@forEachIndexed
+                if (m.score < minScore) return@forEachIndexed
+                val sim = UiSemantics.similarity(st.fingerprint, fp)
+                val score = m.score * 0.65 + sim * 0.35 - i * 0.01   // empate: prefere começar mais cedo
+                if (best == null || score > best!!.score) best = Start(f, i, score)
+            }
+        }
+        return best
+    }
+}
+
+/** Nome legível da tela/site/pesquisa, para dar títulos às automações (em vez de "com.app.pacote"). */
+object ScreenTitle {
+    private val URL_IDS = listOf("url_bar", "url_field", "mozac_browser_toolbar_url_view", "location_bar_edit_text", "search_box_text", "url")
+
+    fun guess(s: ScreenSnapshot): String {
+        hostOf(s.url)?.let { return it }
+        s.visibleNodes.firstOrNull { n -> UiSemantics.viewIdTail(n.viewId) in URL_IDS && n.label.isNotBlank() }?.let { n ->
+            return hostOf(n.label) ?: n.label.take(40)
+        }
+        s.nodes.firstOrNull { it.className.contains("WebView") && it.label.isNotBlank() && it.label.length in 3..60 }?.let { return it.label.trim() }
+        if (s.windowTitle.isNotBlank() && s.windowTitle.length in 3..60) return s.windowTitle.trim()
+        val screen = UiSemantics.screenBounds(s)
+        val h = (screen.bottom - screen.top).coerceAtLeast(1)
+        return s.visibleNodes
+            .filter { n -> !n.isClickable && !n.isEditable && n.label.length in 4..50 && !n.bounds.isEmpty &&
+                (n.bounds.top - screen.top) < h * 0.3 && n.label.any { it.isLetter() } &&
+                !Regex("^\\d{1,2}:\\d{2}").containsMatchIn(n.label) && !UiSemantics.isRewardLike(n.label) }
+            .minByOrNull { it.bounds.top }?.label?.trim().orEmpty()
+    }
+
+    fun hostOf(u: String?): String? {
+        if (u.isNullOrBlank()) return null
+        val m = Regex("^(?:https?://)?(?:www\\.)?([a-z0-9-]+(?:\\.[a-z0-9-]+)+)", RegexOption.IGNORE_CASE).find(u.trim()) ?: return null
+        return m.groupValues[1].lowercase()
+    }
+
+    /** "com.iproyal.pawns" → "Pawns" (quando o Android não informa o nome do app). */
+    fun prettyPackage(pkg: String): String {
+        val skip = setOf("com", "br", "org", "net", "io", "app", "android", "mobile", "apps", "prod", "release", "main")
+        val part = pkg.split('.').lastOrNull { it.length > 1 && it.lowercase() !in skip } ?: pkg
+        return part.replace('_', ' ').replaceFirstChar { it.uppercase() }
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -476,7 +532,12 @@ class DecisionMemory(val records: MutableList<DecisionRecord> = ArrayList()) {
      * Chutes nunca viram verdade: pesam pouco e a confiança fica limitada (Seção 2).
      * Uma única correção também não vira regra universal (Seção 18): confiança cresce com repetição.
      */
-    fun recall(question: String, options: List<String>): AnswerDecision? {
+    fun recall(question: String, options: List<String>): AnswerDecision? = recallInfo(question, options)?.decision
+
+    /** Resultado detalhado da memória: a decisão, se só havia chutes e quantas ocorrências a sustentam. */
+    data class Recall(val decision: AnswerDecision, val onlyGuesses: Boolean, val support: Int)
+
+    fun recallInfo(question: String, options: List<String>, minSimilarity: Double = 0.75): Recall? {
         val key = Text.questionKey(question)
         val scored = HashMap<String, Double>()
         var support = 0
@@ -484,7 +545,7 @@ class DecisionMemory(val records: MutableList<DecisionRecord> = ArrayList()) {
         val snapshot = synchronized(records) { records.toList() }
         for (r in snapshot) {
             val sim = if (r.questionKey == key) 1.0 else jaccard(r.questionKey, key)
-            if (sim < 0.75) continue
+            if (sim < minSimilarity) continue
             val ansKey = r.answers.joinToString(" | ")
             if (options.isNotEmpty() && r.answers.any { a -> options.none { Text.looselyEquals(it, a) } }) continue
             val outcomeFactor = when (r.outcome) { DecisionOutcome.FAILED -> -0.5; DecisionOutcome.CONTINUED -> 1.1; else -> 1.0 }
@@ -499,8 +560,9 @@ class DecisionMemory(val records: MutableList<DecisionRecord> = ArrayList()) {
         var conf = (0.45 + 0.12 * min(support, 4)) * agreement
         if (onlyGuesses) conf = min(conf, 0.4)
         val answers = best.key.split(" | ").map { a -> options.firstOrNull { Text.looselyEquals(it, a) } ?: a }
-        return AnswerDecision(AnswerAction.ANSWER, answers, conf.coerceIn(0.0, 0.9), "memory",
+        val d = AnswerDecision(AnswerAction.ANSWER, answers, conf.coerceIn(0.0, 0.9), "memory",
             "Resposta lembrada de $support ocorrência(s) semelhante(s)${if (onlyGuesses) " (só tentativas)" else ""}.", engine = "memory")
+        return Recall(d, onlyGuesses, support)
     }
 
     private fun jaccard(a: String, b: String): Double {
@@ -515,19 +577,35 @@ class DecisionMemory(val records: MutableList<DecisionRecord> = ArrayList()) {
 // ═══════════════════════════════════════════════════════════════════
 object Guesser {
     /**
-     * Ordem: resposta de baixa confiança já calculada → memória → heurística neutra.
-     * Nunca chuta campo de texto livre sem memória, nem dados sensíveis.
+     * "Chutar respostas" (Seção 2) — usa PRIMEIRO o que já existe e só depois qualquer opção:
+     *  1. respostas que você já deu a esta pergunta (memória, sem contar chutes);
+     *  2. resposta do perfil com confiança baixa;
+     *  3. uma opção que coincide com algum dado do seu perfil ("Meus dados");
+     *  4. memória de perguntas parecidas (inclusive tentativas que deram certo);
+     *  5. só então uma opção qualquer (prefere "prefiro não dizer", depois a faixa do meio).
+     * Nunca chuta dados sensíveis; texto livre só com resposta existente.
      */
-    fun guess(q: SurveyQuestion, low: AnswerDecision?, memory: DecisionMemory?, sensitiveField: Boolean): AnswerDecision? {
+    fun guess(q: SurveyQuestion, low: AnswerDecision?, memory: DecisionMemory?, sensitiveField: Boolean,
+              known: Collection<String> = emptyList()): AnswerDecision? {
         if (sensitiveField) return null
-        if (low != null && !low.needsUser && low.answers.isNotEmpty()) {
-            return low.copy(engine = "guess", source = "guess", reason = "Tentativa a partir de resposta de baixa confiança: ${low.reason}")
+        val opts = q.optionTexts
+        memory?.recallInfo(q.text, opts)?.takeIf { !it.onlyGuesses }?.let { r ->
+            return r.decision.copy(confidence = min(r.decision.confidence, 0.8), engine = "guess", source = "guess",
+                reason = "Tentativa com resposta que você já deu: ${r.decision.reason}")
         }
-        memory?.recall(q.text, q.optionTexts)?.let { m ->
-            return m.copy(confidence = min(m.confidence, 0.6), engine = "guess", source = "guess", reason = "Tentativa pela memória: ${m.reason}")
+        if (low != null && !low.needsUser && low.answers.isNotEmpty()) {
+            return low.copy(engine = "guess", source = "guess", reason = "Tentativa a partir de dado existente (confiança baixa): ${low.reason}")
+        }
+        if (opts.isNotEmpty() && known.isNotEmpty()) {
+            val hit = opts.firstOrNull { o -> known.any { k -> matchesKnown(o, k) } }
+            if (hit != null) return AnswerDecision(AnswerAction.ANSWER, listOf(hit), 0.45, "guess",
+                "Tentativa: a opção coincide com um dado do seu perfil.", engine = "guess")
+        }
+        memory?.recallInfo(q.text, opts, minSimilarity = 0.5)?.let { r ->
+            return r.decision.copy(confidence = min(r.decision.confidence, 0.5), engine = "guess", source = "guess",
+                reason = "Tentativa pela memória de pergunta parecida: ${r.decision.reason}")
         }
         if (q.options.isEmpty()) return null
-        val opts = q.optionTexts
         val pick: String = when {
             // prefere "não sei/prefiro não dizer" quando existir: é a tentativa que não afirma nada falso
             opts.any { Answers.isRefuseOption(it) } -> opts.first { Answers.isRefuseOption(it) }
@@ -537,6 +615,14 @@ object Guesser {
         val conf = 1.0 / max(2, opts.size)
         return AnswerDecision(AnswerAction.ANSWER, listOf(pick), conf, "guess",
             "Tentativa (chute) entre ${opts.size} opções — não é um dado confirmado.", engine = "guess")
+    }
+
+    private fun matchesKnown(option: String, known: String): Boolean {
+        val o = Text.normalize(option); val k = Text.normalize(known)
+        if (k.length < 3 || o.isEmpty()) return false
+        if (o == k || Text.looselyEquals(option, known)) return true
+        // "Engenheiro(a)" x "engenheiro", "São Paulo - SP" x "sao paulo"
+        return (k.length >= 4 && o.split(' ').size <= 6 && (o.startsWith(k) || Regex("\\b" + Regex.escape(k) + "\\b").containsMatchIn(o)))
     }
 }
 

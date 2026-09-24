@@ -1,6 +1,9 @@
 package com.researchagent.autofill.core
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -91,6 +94,8 @@ data class AgentPolicy(
     val guessMode: Boolean = false,
     /** Tempo numa tela não reconhecida antes de propor observar o usuário (Seção 3). */
     val observeUnknownAfterMs: Long = 15_000,
+    /** Logo após ATIVAR, quanto esperar numa tela não reconhecida antes de perguntar o que fazer. */
+    val unknownPromptAfterMs: Long = 6_000,
     val bands: ConfidenceBands = ConfidenceBands(),
     /** Confiança mínima de um fluxo aprendido para executá-lo sem perguntar. */
     val flowMinConfidence: Double = 0.5
@@ -151,6 +156,8 @@ interface AgentHost {
     /** Pede ao controlador para entrar em modo de observação (tela não reconhecida). */
     fun requestObservation(reason: String) {}
     fun isFieldSensitive(fieldKey: String?): Boolean = false
+    /** Valores já conhecidos do perfil (não sensíveis) — usados primeiro pelo "chutar respostas". */
+    fun knownAnswers(): List<String> = emptyList()
 }
 
 /**
@@ -193,14 +200,35 @@ class AgentEngine(
     private var lastResultConfidence = 0.0
     private val loops = LoopDetector()
     private var activeFlowId: String? = null
+    private var promptedSinceStart = false
 
     fun pause() {
         paused.value = true
         update { it.copy(paused = true, state = AgentState.PAUSED, message = "Pausado pelo usuário") }
         saveTask("paused", nextAction = "resume")
+        poke()
     }
-    fun resume() { paused.value = false; update { it.copy(paused = false, message = "Retomando…") } }
-    fun requestStop() { stopRequested = true; paused.value = false }
+    fun resume() { paused.value = false; update { it.copy(paused = false, message = "Retomando…") }; poke() }
+    fun requestStop() { stopRequested = true; paused.value = false; poke() }
+
+    /** Interrompe qualquer espera e relê a tela imediatamente (ex.: usuário tocou em ATIVAR/CONTINUAR). */
+    private val pokes = MutableStateFlow(0)
+    fun poke() { pokes.value = pokes.value + 1 }
+
+    /** O usuário confirmou que a tela atual É uma pesquisa: aceita perguntas com menos sinais. */
+    @Volatile private var forcedPackage: String? = null
+    fun forceSurvey(pkg: String) { forcedPackage = pkg; unknownSince = 0; poke() }
+
+    /** Espera a tela mudar, mas acorda na hora se o usuário cutucar o agente (sem travar 15–60 s). */
+    private suspend fun waitChange(prev: ScreenSnapshot, timeoutMs: Long): ScreenSnapshot? = coroutineScope {
+        val start = pokes.value
+        val waiter = async { driver.awaitChange(prev, timeoutMs) }
+        val poker = launch { pokes.first { it != start }; waiter.cancel() }
+        try { waiter.await() } catch (e: CancellationException) {
+            if (!currentCoroutineContext().isActive) throw e
+            null
+        } finally { poker.cancel() }
+    }
     val isPaused: Boolean get() = paused.value
 
     private fun update(f: (AgentStatus) -> AgentStatus) { _status.value = f(_status.value) }
@@ -230,6 +258,7 @@ class AgentEngine(
 
     suspend fun run() {
         stopRequested = false
+        promptedSinceStart = false
         lastProgressAt = host.now()
         update { AgentStatus(running = true, mode = host.policy().mode, surveyIndex = it.surveyIndex, guessMode = host.policy().guessMode) }
         saveTask("running", nextAction = "scan")
@@ -261,7 +290,7 @@ class AgentEngine(
             val r = intervene(InterventionReason.BLOCKED_APP,
                 "O app ${snap.packageName} está bloqueado para automação (bancos, mensagens, sistema ou fora da lista permitida).",
                 pkg = snap.packageName)
-            if (r is InterventionResult.Resume || r is InterventionResult.Skip) driver.awaitChange(snap, 20_000)
+            if (r is InterventionResult.Resume || r is InterventionResult.Skip) waitChange(snap, 20_000)
             return
         }
 
@@ -270,14 +299,17 @@ class AgentEngine(
             driver.ocrSnapshot()?.let { ocr -> if (ocr.textNodeCount > snap!!.textNodeCount) snap = ocr }
         }
         val current = snap!!
-        val page = SurveyAnalyzer.analyze(current, host.knowledge())
+        var page = SurveyAnalyzer.analyze(current, host.knowledge())
+        if (!page.isSurvey && forcedPackage == current.packageName && page.questions.isNotEmpty() && !page.completed && page.guard == null) {
+            page = page.copy(isSurvey = true)   // você confirmou que é pesquisa
+        }
         val kind = UiSemantics.classifyScreen(current, page)
         reportConfidence(page, kind)
 
         // Riscos: CAPTCHA, login, pagamento (Seções 16–18)
         page.guard?.let { g ->
             val r = intervene(g.reason, "${g.reason.title}. Resolva na tela e toque em JÁ RESOLVI.", pkg = current.packageName)
-            if (r is InterventionResult.Skip) driver.awaitChange(current, 30_000)
+            if (r is InterventionResult.Skip) waitChange(current, 30_000)
             return
         }
 
@@ -382,7 +414,7 @@ class AgentEngine(
         var isGuess = false
         if (decision.needsUser || decision.confidence < policy.threshold) {
             // "Chutar respostas" (Seção 2): tentativa registrada como tal, nunca como verdade
-            val guess = if (policy.guessMode) Guesser.guess(q, decision.takeIf { !it.needsUser }, host.decisions(), host.isFieldSensitive(decision.fieldKey)) else null
+            val guess = if (policy.guessMode) Guesser.guess(q, decision.takeIf { !it.needsUser }, host.decisions(), host.isFieldSensitive(decision.fieldKey), host.knownAnswers()) else null
             if (guess != null) {
                 decision = guess
                 isGuess = true
@@ -587,7 +619,7 @@ class AgentEngine(
             val label = if (isSubmit) "ENVIAR a pesquisa" else "avançar para a próxima página"
             when (intervene(InterventionReason.CONFIRM_NEXT, "Respostas preenchidas. Posso $label (\"${target.label}\")?", pkg = snap.packageName)) {
                 is InterventionResult.Answered, InterventionResult.Resume -> Unit
-                InterventionResult.Skip -> { driver.awaitChange(snap, 60_000); return }
+                InterventionResult.Skip -> { waitChange(snap, 60_000); return }
                 InterventionResult.Stop -> return
             }
         }
@@ -662,7 +694,7 @@ class AgentEngine(
         samePageNavAttempts = 0
         val startedAt = host.now()
         val r = intervene(InterventionReason.STUCK, "Não consegui avançar com segurança. $why", pkg = snap.packageName)
-        if (r is InterventionResult.Skip) driver.awaitChange(snap, 30_000)
+        if (r is InterventionResult.Skip) waitChange(snap, 30_000)
         if (r is InterventionResult.Resume) learnFromUserActions(startedAt)
         scrollsOnPage = 0
         lastProgressAt = host.now()
@@ -697,7 +729,7 @@ class AgentEngine(
             if (tryStartNext(snap, page)) return
         }
         setState(AgentState.WAITING, "Pesquisa concluída. Aguardando nova pesquisa na tela…")
-        driver.awaitChange(snap, 60_000)
+        waitChange(snap, 60_000)
     }
 
     private suspend fun onNoSurvey(snap: ScreenSnapshot, page: SurveyPage, policy: AgentPolicy, kind: ScreenKind) {
@@ -710,23 +742,35 @@ class AgentEngine(
             if (tryStartNext(snap, page)) return
         }
 
-        // 3) Tela não reconhecida por muito tempo → aprender observando (Seção 3)
+        // 3) Tela não reconhecida → PERGUNTA ao usuário o que fazer (não fica parado em silêncio)
         val now = host.now()
         if (unknownSince == 0L) unknownSince = now
-        val limit = if (inSurvey) policy.observeUnknownAfterMs * 2 else policy.observeUnknownAfterMs
+        val limit = when {
+            inSurvey -> policy.observeUnknownAfterMs * 2
+            !promptedSinceStart -> minOf(policy.unknownPromptAfterMs, policy.observeUnknownAfterMs)
+            else -> policy.observeUnknownAfterMs
+        }
         if (now - unknownSince >= limit && observationRequestedFor != snap.contentSignature) {
             observationRequestedFor = snap.contentSignature
-            val reason = if (kind == ScreenKind.SURVEY_LIST)
-                "Vi uma lista de pesquisas/tarefas, mas ainda não sei qual abrir. Abra uma você mesmo: vou observar e aprender."
-            else "Não reconheci esta tela como pesquisa. Faça a operação manualmente: vou observar cada toque e aprender o padrão."
+            promptedSinceStart = true
+            val qs = page.questions.size
+            val reason = when {
+                kind == ScreenKind.SURVEY_LIST -> "Vi uma lista de pesquisas/tarefas, mas ainda não sei qual abrir."
+                qs > 0 -> "Encontrei $qs pergunta(s), mas não tenho certeza de que esta tela é uma pesquisa."
+                else -> "Não reconheci esta tela como pesquisa."
+            }
             host.onEvent(AgentEvent.ObservationRequested(snap.packageName, reason))
-            host.requestObservation(reason)
             setState(AgentState.OBSERVING, reason)
-            driver.awaitChange(snap, 30_000)
+            val r = intervene(InterventionReason.UNKNOWN_SCREEN, "$reason O que devo fazer?", pkg = snap.packageName)
+            when (r) {
+                InterventionResult.Resume -> { unknownSince = 0; observationRequestedFor = 0 }   // tentar de novo já
+                InterventionResult.Skip -> { unknownSince = 0; waitChange(snap, 60_000) }         // você vai mostrar / automação
+                else -> Unit
+            }
             return
         }
         setState(AgentState.WAITING, if (inSurvey) "Carregando próxima página…" else "Nenhuma pesquisa reconhecida nesta tela. Aguardando…")
-        driver.awaitChange(snap, if (inSurvey) 8_000 else 15_000)
+        waitChange(snap, if (inSurvey) 6_000 else 5_000)
     }
 
     /** Executa UM passo de um fluxo aprendido que combine com a tela (verifica o resultado). */
@@ -734,10 +778,18 @@ class AgentEngine(
         val flows = host.flows().filter { it.confidence >= policy.flowMinConfidence }
         if (flows.isEmpty()) return false
         val info = ScreenInfo(snap.packageName, kind, UiSemantics.fingerprint(snap), snap.signature)
-        val (flow, idx) = FlowLearner.match(flows, info) ?: return false
+        // 1) pela "cara" da tela; 2) adivinhando: procura o elemento de cada passo na tela
+        var pick = FlowLearner.match(flows, info)?.let { (f, i) ->
+            val mm = ElementMatcher.find(snap, f.steps[i].target, f.steps[i].textVariable, kind)
+            if (mm != null && mm.score >= 0.55) Triple(f, i, mm) else null
+        }
+        if (pick == null) {
+            val g = FlowLearner.bestStart(flows, snap, kind, minScore = 0.7) ?: return false
+            val mm = ElementMatcher.find(snap, g.flow.steps[g.step].target, g.flow.steps[g.step].textVariable, kind) ?: return false
+            pick = Triple(g.flow, g.step, mm)
+        }
+        val (flow, idx, m) = pick
         val stepDef = flow.steps[idx]
-        val m = ElementMatcher.find(snap, stepDef.target, stepDef.textVariable, kind) ?: return false
-        if (m.score < 0.55) return false
         if (stepDef.action == ActionType.TEXT && (stepDef.inputVariable || stepDef.text.isNullOrBlank())) return false
         if (loops.record(snap.signature, "flow:${flow.id}:$idx")) {
             host.onEvent(AgentEvent.LoopDetected(snap.packageName, "Fluxo \"${flow.name}\" repetiu o passo ${idx + 1}"))
@@ -783,7 +835,7 @@ class AgentEngine(
             update { it.copy(suggestions = list) }
         }
         setState(AgentState.WAITING, "Modo manual: veja as sugestões no painel e responda você mesmo.")
-        driver.awaitChange(snap, 120_000)
+        waitChange(snap, 120_000)
     }
 
     // ── Intervenção humana (Seção 15) ────────────────────────────────

@@ -31,6 +31,7 @@ enum class InterventionReason(val title: String) {
     CONFLICT("Conflito de informação no perfil"),
     VALIDATION_ERROR("A página indicou erro de validação"),
     STUCK("Não consegui avançar com segurança"),
+    UNKNOWN_SCREEN("Não reconheci esta tela"),
     CONFIRM_NEXT("Confirmar avanço (modo assistido)"),
     SENSITIVE("Informação sensível não autorizada")
 }

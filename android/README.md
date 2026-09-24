@@ -68,6 +68,18 @@ Menu da bolha: 🔍 Ativar pesquisa · 🧠 Ensinar automação · ⚙️ Automa
 
 Nenhuma regra é específica de um app. O Pawns.app serve apenas como exemplo de validação.
 
+## Correções de usabilidade (v2.2)
+
+- **Aba ❓ Ajuda** no app: explica cada botão da bolha, as caixas de aviso e as cores. Também pode ser aberta pela bolha (❓).
+- **🧠 ENSINAR PESQUISA × ⏺ GRAVAR AUTOMAÇÃO**: cada botão tem uma legenda curta, e os dois não podem ser ligados ao mesmo tempo. Ensinar = o agente aprende observando você; Gravar = atalho exato para repetir.
+- **Gravação com retorno**: cada toque gravado aparece numa mensagem ("Passo 3 gravado: tocou em …"). Se a tela mudar sem toque captado, aparece um aviso. Toques sem nó localizado são gravados pelo texto, id e região informados pelo Android.
+- **Nomes legíveis**: as automações usam o nome do app e do site ou tela (ex.: "Pawns · Pesquisas disponíveis") em vez de "com.iproyal…".
+- **▶ REPRODUZIR AUTOMAÇÃO** na bolha, com as automações do app aberto. As marcadas com ✓ combinam com a tela atual e começam no passo certo. **🔮 Adivinhar pela tela** encontra sozinho o passo correspondente. Com o agente ativo, isso também é tentado automaticamente.
+- **Passo não encontrado** na reprodução: aparece um aviso (fazer à mão + JÁ RESOLVI, IGNORAR o passo ou PARAR), sem parar em silêncio.
+- **Tela não reconhecida**: logo após ATIVAR, em vez de ficar parado, aparece o aviso "Não reconheci esta tela" com as opções: é uma pesquisa (tentar mesmo assim), reproduzir automação, vou mostrar ou pausar.
+- **ATIVAR/CONTINUAR responde na hora**: as esperas longas foram trocadas por esperas que acordam quando você toca na bolha. Um indicador de carregamento que nunca some não trava mais o agente. O menu não é reconstruído a cada atualização de status, que antes "engolia" toques.
+- **🎯 Chutar respostas** usa primeiro o que já existe (suas respostas anteriores, dados do perfil, opções que batem com "Meus dados", perguntas parecidas) e só então uma opção qualquer.
+
 ## Segurança e privacidade
 
 - Nunca inventa dados: sem valor no perfil → `ASK_USER`.

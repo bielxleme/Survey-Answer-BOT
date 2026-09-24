@@ -14,9 +14,13 @@ class FlowRunner(
     /** Pede texto ao usuário quando o passo é de digitação variável. Null = cancelar. */
     private val askText: suspend (prompt: String) -> String? = { null },
     private val minMatch: Double = 0.55,
-    private val stepTimeoutMs: Long = 10_000
+    private val stepTimeoutMs: Long = 6_000,
+    /** Passo não encontrado: pergunta ao usuário (ele pode fazer o passo, pular ou parar). Padrão = parar. */
+    private val onStuck: suspend (step: Int, total: Int, message: String) -> StuckChoice = { _, _, _ -> StuckChoice.ABORT }
 ) {
     data class Result(val success: Boolean, val stepsDone: Int, val message: String)
+
+    enum class StuckChoice { USER_DID_IT, SKIP_STEP, ABORT }
 
     suspend fun run(flow: Flow, startAt: Int = 0): Result {
         val loops = LoopDetector()
@@ -29,10 +33,22 @@ class FlowRunner(
             val kind = UiSemantics.classifyScreen(snap)
             val m = ElementMatcher.find(snap, st.target, st.textVariable, kind)
             if (m == null || m.score < minMatch) {
-                return Result(false, done, "Não encontrei \"${st.target.text.ifBlank { st.target.role.label }}\" no passo ${i + 1} " +
-                    "(semelhança ${"%.0f".format((m?.score ?: 0.0) * 100)}%).")
+                val msg = "Não encontrei \"${st.target.text.ifBlank { st.target.role.label }}\" no passo ${i + 1} " +
+                    "(semelhança ${"%.0f".format((m?.score ?: 0.0) * 100)}%)."
+                when (onStuck(i + 1, flow.steps.size, msg)) {
+                    StuckChoice.USER_DID_IT -> { done++; i++; continue }
+                    StuckChoice.SKIP_STEP -> { i++; continue }
+                    StuckChoice.ABORT -> return Result(false, done, msg)
+                }
             }
-            if (loops.record(snap.signature, "step:$i")) return Result(false, done, "Loop no passo ${i + 1}: a tela não muda.")
+            if (loops.record(snap.signature, "step:$i")) {
+                val msg = "O passo ${i + 1} não muda a tela."
+                when (onStuck(i + 1, flow.steps.size, msg)) {
+                    StuckChoice.USER_DID_IT -> { done++; i++; loops.reset(); continue }
+                    StuckChoice.SKIP_STEP -> { i++; loops.reset(); continue }
+                    StuckChoice.ABORT -> return Result(false, done, "Loop no passo ${i + 1}: a tela não muda.")
+                }
+            }
             val ok = when (st.action) {
                 ActionType.CLICK -> driver.click(m.node)
                 ActionType.TEXT -> {
@@ -42,7 +58,7 @@ class FlowRunner(
                 }
             }
             if (!ok) return Result(false, done, "Falha ao executar o passo ${i + 1}.")
-            val after = driver.awaitChange(snap, stepTimeoutMs)
+            val after = driver.awaitChange(snap, minOf(stepTimeoutMs, 5_000))
             done++
             // passo de digitação não muda a tela necessariamente
             if (st.action == ActionType.CLICK && (after == null || after.signature == snap.signature)) {

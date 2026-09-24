@@ -65,7 +65,7 @@ object LearningScreen {
         if (flows.isEmpty()) fc.addView(ui.muted("Nenhum ainda. Grave uma operação pela bolha (⚙️ AUTOMATIZAR OPERAÇÃO) " +
             "ou ensine como abrir uma pesquisa (🧠 ENSINAR AUTOMAÇÃO).", 12f))
         flows.sortedByDescending { it.createdAt }.forEach { f ->
-            fc.addView(ui.text(f.name, 14f, Palette.Text, bold = true, top = 10))
+            fc.addView(ui.text(Observer.displayName(f), 14f, Palette.Text, bold = true, top = 10))
             fc.addView(ui.muted("${Observer.appLabel(f.packageName)} · ${f.steps.size} passos · ${f.demonstrations} demonstração(ões) · " +
                 "✓${f.successes} ✗${f.failures} · confiança ${"%.0f".format(f.confidence * 100)}%", 12f, top = 2))
             if (f.demonstrationsNeeded > 0) fc.addView(ui.muted("Demonstre mais ${f.demonstrationsNeeded} vez(es) para confirmar o padrão.", 12f, top = 2))
@@ -78,9 +78,9 @@ object LearningScreen {
                     if (AgentController.runFlow(f)) { a.toast("Abra o app ${Observer.appLabel(f.packageName)} — executando…"); a.moveTaskToBack(true) }
                     else a.toast("Ative o serviço de acessibilidade primeiro")
                 },
-                ui.button("Renomear", Palette.Muted, outlined = true) { rename(a, f.id, f.name) },
+                ui.button("Renomear", Palette.Muted, outlined = true) { rename(a, f.id, Observer.displayName(f)) },
                 ui.button("Excluir", Palette.Red, outlined = true) {
-                    confirm(a, "Excluir \"${f.name}\"?") { learning.deleteFlow(f.id) }
+                    confirm(a, "Excluir \"${Observer.displayName(f)}\"?") { learning.deleteFlow(f.id) }
                 })
         }
 

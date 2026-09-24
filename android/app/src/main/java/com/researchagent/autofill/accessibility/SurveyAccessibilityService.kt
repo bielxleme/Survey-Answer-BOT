@@ -71,7 +71,7 @@ class SurveyAccessibilityService : AccessibilityService() {
             }
         }
         // Só repassa pulsos enquanto o agente estiver ativo (economia de bateria)
-        if (AgentController.isActive) _events.tryEmit(event.eventType)
+        if (AgentController.isActive || AgentController.isFlowRunning) _events.tryEmit(event.eventType)
     }
 
     override fun onInterrupt() {

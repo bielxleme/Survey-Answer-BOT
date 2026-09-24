@@ -124,10 +124,10 @@ class MainActivity : Activity() {
     private fun buildNav() {
         nav.removeAllViews()
         nav.visibility = if (mode == Mode.TABS) View.VISIBLE else View.GONE
-        listOf("● Painel", "👤 Dados", "☰ Logs", "⚙ Ajustes", "🧠 Aprender").forEachIndexed { i, label ->
-            val t = ui.text(label, 13f, if (i == tab) Palette.Green else Palette.Muted, bold = i == tab).apply {
+        listOf("●\nPainel", "👤\nDados", "☰\nLogs", "⚙\nAjustes", "🧠\nAprender", "❓\nAjuda").forEachIndexed { i, label ->
+            val t = ui.text(label, 11f, if (i == tab) Palette.Green else Palette.Muted, bold = i == tab).apply {
                 gravity = Gravity.CENTER
-                setPadding(0, ui.dp(14), 0, ui.dp(14))
+                setPadding(0, ui.dp(8), 0, ui.dp(8))
                 setOnClickListener { if (tab != i) { tab = i; render(resetScroll = true) } }
             }
             nav.addView(t, ui.lp(0, weight = 1f))
@@ -147,6 +147,7 @@ class MainActivity : Activity() {
                 TAB_LOGS -> Screens.logs(this, page)
                 TAB_SETTINGS -> SettingsScreen.build(this, page)
                 TAB_LEARNING -> LearningScreen.build(this, page)
+                TAB_HELP -> HelpScreen.build(this, page)
                 else -> Screens.dashboard(this, page)
             }
         }
@@ -297,6 +298,7 @@ class MainActivity : Activity() {
         const val TAB_LOGS = 2
         const val TAB_SETTINGS = 3
         const val TAB_LEARNING = 4
+        const val TAB_HELP = 5
         private const val REQ_IMPORT = 11
         private const val REQ_EXPORT = 12
         private const val REQ_NOTIF = 13

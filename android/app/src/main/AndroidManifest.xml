@@ -7,6 +7,14 @@
     <!-- Somente para o provedor de IA opcional escolhido pelo usuário. -->
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- Permite ler o NOME dos apps (ex.: "Pawns" em vez de "com.iproyal.pawns") — só apps com ícone na tela inicial -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
     <application
         android:name=".ResearchAgentApp"
         android:allowBackup="false"

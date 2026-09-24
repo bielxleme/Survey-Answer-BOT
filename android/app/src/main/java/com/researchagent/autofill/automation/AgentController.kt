@@ -15,6 +15,8 @@ import com.researchagent.autofill.core.DecisionMemory
 import com.researchagent.autofill.core.DecisionOutcome
 import com.researchagent.autofill.core.Flow
 import com.researchagent.autofill.core.FlowRunner
+import com.researchagent.autofill.core.FlowLearner
+import com.researchagent.autofill.core.UiSemantics
 import com.researchagent.autofill.core.InterventionReason
 import com.researchagent.autofill.core.ObservedAction
 import com.researchagent.autofill.core.TaskState
@@ -125,7 +127,7 @@ object AgentController : AgentHost {
     /** ATIVAR PESQUISA (Seção 1). */
     fun start(): Boolean {
         val service = SurveyAccessibilityService.instance ?: return false
-        if (isActive) { resume(); return true }
+        if (isActive) { resume(); engine?.poke(); return true }
         val e = AgentEngine(service.driver, AppGraph.answerProvider, this)
         engine = e
         statusJob?.cancel()
@@ -149,6 +151,7 @@ object AgentController : AgentHost {
 
     fun resume() {
         engine?.resume()
+        engine?.poke()
         // se estava aguardando o usuário resolver algo (CAPTCHA/login), "continuar" libera
         InterventionBus.respondCurrent(InterventionResult.Resume)
     }
@@ -205,44 +208,83 @@ object AgentController : AgentHost {
     fun startRecord() { Observer.start(Observer.Mode.RECORD) }
     fun stopObserving(): String? = Observer.stop()
 
-    /** Fluxos aplicáveis ao app atualmente em primeiro plano. */
-    fun flowsForCurrentApp(): List<Flow> {
-        val pkg = SurveyAccessibilityService.instance?.lastPackage.orEmpty()
-        return AppGraph.learning.flows.value.filter { it.packageName == pkg }
+    /** Fluxos do app em primeiro plano; os que combinam com a tela atual vêm primeiro (com o passo inicial). */
+    fun flowsForCurrentApp(): List<Pair<Flow, Int?>> {
+        val service = SurveyAccessibilityService.instance ?: return emptyList()
+        val pkg = service.lastPackage
+        val flows = AppGraph.learning.flows.value.filter { it.packageName == pkg }
+        if (flows.isEmpty()) return emptyList()
+        val snap = runCatching { service.driver.snapshotDetached() }.getOrNull()
+        return flows.map { f ->
+            val start = snap?.takeIf { it.packageName == pkg }?.let { FlowLearner.bestStart(listOf(f), it, minScore = 0.6)?.step }
+            f to start
+        }.sortedWith(compareBy({ it.second == null }, { -it.first.confidence }))
+    }
+
+    /**
+     * 🔮 Adivinhar: procura, entre as automações salvas deste app, o passo que corresponde à tela atual
+     * e reproduz a partir dele. Retorna uma mensagem para o usuário.
+     */
+    fun guessAndRunFlow(): String {
+        val service = SurveyAccessibilityService.instance ?: return "Serviço de acessibilidade indisponível"
+        val snap = service.driver.snapshotDetached() ?: return "Não consegui ler a tela"
+        val flows = AppGraph.learning.flows.value.filter { it.packageName == snap.packageName }
+        if (flows.isEmpty()) return "Nenhuma automação salva para ${Observer.appLabel(snap.packageName)}. Grave uma com ⏺ GRAVAR AUTOMAÇÃO."
+        val kind = UiSemantics.classifyScreen(snap)
+        val best = FlowLearner.bestStart(flows, snap, kind, minScore = 0.55)
+            ?: return "Nenhuma automação salva combina com esta tela. Abra a tela onde a gravação começou ou grave de novo."
+        runFlow(best.flow, best.step)
+        return "Reproduzindo \"${Observer.displayName(best.flow)}\" a partir do passo ${best.step + 1}"
     }
 
     /** Executa um fluxo aprendido localizando cada elemento por semântica (não por coordenadas). */
-    fun runFlow(flow: Flow): Boolean {
+    fun runFlow(flow: Flow, startAt: Int = 0): Boolean {
         val service = SurveyAccessibilityService.instance ?: return false
         if (isFlowRunning) return false
-        if (isActive) pause()
+        val engineWasRunning = isActive && engine?.isPaused == false
+        if (engineWasRunning) pause()
+        val name = Observer.displayName(flow)
         flowJob = scope.launch {
-            log(LogType.INFO, flow.packageName, "Executando automação \"${flow.name}\"", "${flow.steps.size} passos · confiança ${"%.0f".format(flow.confidence * 100)}%")
+            log(LogType.INFO, flow.packageName, "Executando automação \"$name\"",
+                "${flow.steps.size} passos, a partir do ${startAt + 1} · confiança ${"%.0f".format(flow.confidence * 100)}%")
             val runner = FlowRunner(
                 driver = service.driver,
                 onProgress = { step, total, msg ->
                     _flowProgress.value = msg
-                    onEvent(AgentEvent.FlowStepRun(flow.packageName, flow.name, step, true))
-                    if (step == 1 && total > 0) Unit
+                    onEvent(AgentEvent.FlowStepRun(flow.packageName, name, step, true))
                 },
                 askText = { prompt ->
                     val r = intervene(Intervention(System.currentTimeMillis(), InterventionReason.MISSING_INFO, prompt, packageName = flow.packageName))
                     (r as? InterventionResult.Answered)?.answers?.firstOrNull()
+                },
+                onStuck = { step, total, msg ->
+                    // não trava em silêncio: pede para o usuário fazer o passo, pular ou parar
+                    val r = intervene(Intervention(System.currentTimeMillis(), InterventionReason.STUCK,
+                        "Automação \"$name\" — passo $step/$total: $msg Faça esse passo na tela e toque em JÁ RESOLVI, " +
+                            "ou IGNORAR para pular este passo.", packageName = flow.packageName))
+                    when (r) {
+                        InterventionResult.Resume -> FlowRunner.StuckChoice.USER_DID_IT
+                        InterventionResult.Skip -> FlowRunner.StuckChoice.SKIP_STEP
+                        else -> FlowRunner.StuckChoice.ABORT
+                    }
                 }
             )
-            val result = try { runner.run(flow) } catch (t: Throwable) {
+            val result = try { runner.run(flow, startAt) } catch (t: Throwable) {
                 if (t is kotlinx.coroutines.CancellationException) throw t
                 FlowRunner.Result(false, 0, "Erro: ${t.message}")
             } finally { _flowProgress.value = null }
             AppGraph.learning.flowResult(flow.id, result.success)
             log(if (result.success) LogType.COMPLETED else LogType.ERROR, flow.packageName,
                 if (result.success) "Automação concluída" else "Automação interrompida", result.message)
-            if (!result.success) {
-                // ajuda o sistema a aprender: observa o que o usuário fizer a seguir
-                Observer.start(Observer.Mode.TEACH)
-            }
+            if (engineWasRunning) resume()   // volta a responder a pesquisa que a automação abriu
         }
         return true
+    }
+
+    /** O usuário confirmou (pela caixa de aviso) que a tela atual é uma pesquisa. */
+    fun forceSurveyHere() {
+        val pkg = SurveyAccessibilityService.instance?.lastPackage.orEmpty()
+        if (pkg.isNotBlank()) engine?.forceSurvey(pkg)
     }
 
     fun cancelFlow() { flowJob?.cancel(); flowJob = null; _flowProgress.value = null }
@@ -278,6 +320,15 @@ object AgentController : AgentHost {
     override fun onFlowResult(flowId: String, success: Boolean) = AppGraph.learning.flowResult(flowId, success)
     override fun onTaskState(state: TaskState) = AppGraph.learning.saveTask(state)
     override fun userActionsSince(time: Long): List<ObservedAction> = Observer.actionsSince(time)
+    override fun knownAnswers(): List<String> {
+        val p = AppGraph.profile.current
+        return p.values.mapNotNull { (k, v) ->
+            val def = p.fieldDef(k)
+            if (v.isBlank() || def?.sensitive == true) null
+            else com.researchagent.autofill.core.ProfileLearning.display(def, v).takeIf { it != "NÃO INFORMADO" }
+        }.flatMap { it.split(", ") }.filter { it.length >= 3 }.distinct()
+    }
+
     override fun isFieldSensitive(fieldKey: String?): Boolean =
         fieldKey != null && AppGraph.profile.current.fieldDef(fieldKey)?.sensitive == true
 
