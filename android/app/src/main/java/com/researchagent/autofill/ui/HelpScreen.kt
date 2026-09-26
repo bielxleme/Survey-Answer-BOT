@@ -39,6 +39,12 @@ object HelpScreen {
         Item("MODO",
             "Manual: só sugere. Assistido: responde e pede confirmação para avançar. Automático: responde e avança sozinho.",
             "Comece no Assistido. Passe para o Automático quando confiar nas respostas."),
+        Item("📋 GRAVAR LOGS (Diagnóstico)",
+            "Armazena em um lugar único os eventos, cliques e situações onde a automação falhou. Exporta em formato de baixo consumo de tokens para análise e correção.",
+            "Ative quando quiser enviar um diagnóstico para a IA ou entender por que uma pergunta não foi respondida."),
+        Item("✏️ PERGUNTA INCORRETA",
+            "Corrige a pergunta selecionada incorretamente (exibida em vermelho entre aspas). Ao tocar, você pode selecionar uma palavra, trecho ou tocar na tela: o app lê inteligentemente a frase completa.",
+            "Use sempre que a pergunta ou resposta não for reconhecida corretamente."),
         Item("❌ ENCERRAR APP",
             "Diferente de Pausar: para tudo, cancela automações e observação, remove a bolha e fecha as telas do app.",
             "Para usar de novo, abra o Research Agent — a bolha volta.")
@@ -98,6 +104,8 @@ object HelpScreen {
             "Ativei e nada acontece: espere alguns segundos. Se a tela não for reconhecida, aparece o aviso \"Não reconheci esta tela\" com opções.",
             "Automação parou: o passo não foi encontrado. Faça o passo e toque em JÁ RESOLVI, ou IGNORAR para pular.",
             "Nomes das automações: o agente usa o nome do app e do site/tela. Você pode renomear na aba 🧠 Aprender.",
+            "Opções fora da tela: quando há muitas respostas, o agente desce e rola para localizá-las e encontrar o botão de próximo.",
+            "Toques na bolha: cliques na bolha durante o modo observar são ignorados para não registrar falsas ações.",
             "Tudo o que foi observado, aprendido e chutado aparece nas abas Logs e 🧠 Aprender. Lá você também pode apagar padrões e automações."
         ).forEach { tr.addView(ui.muted("• $it", 12.5f, top = 6)) }
     }

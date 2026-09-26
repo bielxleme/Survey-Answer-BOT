@@ -1,6 +1,7 @@
-import React from 'react';
-import { Check, CheckCircle2, ShieldCheck, ArrowRight, HelpCircle } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Check, CheckCircle2, ShieldCheck, ArrowRight, HelpCircle, Edit3, Sparkles, CheckCheck } from 'lucide-react';
 import { SimulatedSurvey, SurveyQuestion } from '../../types/survey';
+import { extractFullSentence } from '../../utils/smartTextExtractor';
 
 interface SurveyScreenProps {
   survey: SimulatedSurvey;
@@ -10,6 +11,7 @@ interface SurveyScreenProps {
   onAnswerChange: (questionId: string, value: any) => void;
   onNextPage: () => void;
   showAccessibilityOverlay: boolean;
+  onCorrectQuestion?: (questionId: string, correctedText: string) => void;
 }
 
 export const SurveyScreen: React.FC<SurveyScreenProps> = ({
@@ -20,13 +22,75 @@ export const SurveyScreen: React.FC<SurveyScreenProps> = ({
   onAnswerChange,
   onNextPage,
   showAccessibilityOverlay,
+  onCorrectQuestion,
 }) => {
   const currentPage = survey.pages[pageIndex] || survey.pages[0];
+  const containerRef = useRef<HTMLDivElement>(null);
+  const questionRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  const [activeCorrectionQuestionId, setActiveCorrectionQuestionId] = useState<string | null>(null);
+  const [extractedCandidate, setExtractedCandidate] = useState<string>('');
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Smooth auto-scroll when a question is highlighted by the agent or requires attention
+  useEffect(() => {
+    if (highlightedQuestionId && questionRefs.current[highlightedQuestionId]) {
+      questionRefs.current[highlightedQuestionId]?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest',
+      });
+    }
+  }, [highlightedQuestionId]);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3500);
+  };
+
+  const handleStartCorrection = (q: SurveyQuestion) => {
+    setActiveCorrectionQuestionId(q.id);
+    // Extração inicial inteligente usando a frase base
+    const base = q.fullOriginalSentence || q.text;
+    const extracted = extractFullSentence(base, '');
+    setExtractedCandidate(extracted);
+    showToast('Toque ou selecione qualquer palavra da pergunta: vou ler a frase completa.');
+  };
+
+  const handleTextSelection = (q: SurveyQuestion, e: React.MouseEvent<HTMLDivElement>) => {
+    if (activeCorrectionQuestionId !== q.id) return;
+    
+    // Obter texto selecionado pelo cursor ou toque
+    const selection = window.getSelection()?.toString() || '';
+    const base = q.fullOriginalSentence || q.text;
+    const smartSentence = extractFullSentence(base, selection);
+    setExtractedCandidate(smartSentence);
+    showToast(`Frase identificada: "${smartSentence.substring(0, 45)}..."`);
+  };
+
+  const handleConfirmCorrection = (questionId: string) => {
+    if (extractedCandidate && onCorrectQuestion) {
+      onCorrectQuestion(questionId, extractedCandidate);
+      showToast('Pergunta corrigida e atualizada no agente com sucesso!');
+    }
+    setActiveCorrectionQuestionId(null);
+    setExtractedCandidate('');
+  };
 
   return (
-    <div className="flex flex-col h-full bg-slate-50 text-slate-900 select-none overflow-y-auto">
+    <div
+      ref={containerRef}
+      className="flex flex-col h-full bg-slate-50 text-slate-900 select-none overflow-y-auto relative scroll-smooth"
+    >
+      {/* Toast Alert Banner */}
+      {toastMessage && (
+        <div className="sticky top-12 z-30 mx-3 p-2 bg-emerald-900/95 text-emerald-200 border border-emerald-500/50 rounded-xl shadow-lg text-[11px] flex items-center space-x-1.5 animate-in fade-in slide-in-from-top-2">
+          <Sparkles className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+          <span className="font-medium">{toastMessage}</span>
+        </div>
+      )}
+
       {/* Target App Header (Simulating In-App Browser or Survey App) */}
-      <div className="bg-emerald-600 text-white px-4 py-3 shadow-md flex items-center justify-between sticky top-0 z-10">
+      <div className="bg-emerald-600 text-white px-4 py-3 shadow-md flex items-center justify-between sticky top-0 z-20">
         <div>
           <div className="flex items-center space-x-1.5">
             <span className="text-xs uppercase tracking-wider font-bold bg-emerald-700/60 px-1.5 py-0.5 rounded">
@@ -70,13 +134,23 @@ export const SurveyScreen: React.FC<SurveyScreenProps> = ({
           {currentPage.questions.map((q, idx) => {
             const isHighlighted = highlightedQuestionId === q.id;
             const currentVal = answers[q.id];
+            const isCorrecting = activeCorrectionQuestionId === q.id;
+            const isMisidentified = q.needsCorrectionDemo || q.text.includes('"pergunta"');
 
             return (
               <div
                 key={q.id}
+                ref={(el) => {
+                  questionRefs.current[q.id] = el;
+                }}
+                onMouseUp={(e) => handleTextSelection(q, e)}
                 className={`p-3.5 rounded-xl border transition-all relative ${
-                  isHighlighted
+                  isCorrecting
+                    ? 'border-amber-500 bg-amber-50/80 shadow-md ring-2 ring-amber-400'
+                    : isHighlighted
                     ? 'border-cyan-500 bg-cyan-50/70 shadow-md ring-2 ring-cyan-400/40 animate-pulse'
+                    : isMisidentified
+                    ? 'border-rose-400 bg-rose-50/40 shadow-sm'
                     : 'border-slate-200 bg-white shadow-sm'
                 }`}
               >
@@ -87,19 +161,81 @@ export const SurveyScreen: React.FC<SurveyScreenProps> = ({
                   </span>
                 )}
 
+                {/* Question Label Header */}
                 <div className="flex items-start justify-between mb-2">
-                  <label className="text-xs font-semibold text-slate-800 leading-snug">
-                    <span className="text-emerald-600 font-bold mr-1">{idx + 1}.</span>
-                    {q.text}
-                    {q.required && <span className="text-rose-500 ml-1">*</span>}
-                  </label>
-                  {q.needsUserInput && (
-                    <span className="text-[10px] bg-rose-100 text-rose-700 font-medium px-1.5 py-0.5 rounded flex items-center space-x-1 shrink-0">
-                      <HelpCircle className="w-2.5 h-2.5" />
-                      <span>Sem Perfil</span>
-                    </span>
-                  )}
+                  <div className="flex-1 pr-2">
+                    <label className="text-xs font-semibold text-slate-800 leading-snug cursor-text">
+                      <span className="text-emerald-600 font-bold mr-1">{idx + 1}.</span>
+                      <span className={isMisidentified ? 'text-rose-600 font-bold' : ''}>
+                        {q.text}
+                      </span>
+                      {q.required && <span className="text-rose-500 ml-1">*</span>}
+                    </label>
+
+                    {/* Exibe o texto completo subjacente para apoio na seleção inteligente */}
+                    {q.fullOriginalSentence && q.fullOriginalSentence !== q.text && (
+                      <p className="text-[10px] text-slate-400 italic mt-1 select-text">
+                        Frase original: "{q.fullOriginalSentence}"
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex flex-col items-end space-y-1 shrink-0">
+                    {q.needsUserInput && (
+                      <span className="text-[10px] bg-rose-100 text-rose-700 font-medium px-1.5 py-0.5 rounded flex items-center space-x-1">
+                        <HelpCircle className="w-2.5 h-2.5" />
+                        <span>Sem Perfil</span>
+                      </span>
+                    )}
+
+                    {/* Botão "Pergunta incorreta" visível quando a pergunta está incorreta ou em destaque */}
+                    {(isMisidentified || isHighlighted || isCorrecting) && (
+                      <button
+                        onClick={() => handleStartCorrection(q)}
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded flex items-center space-x-1 transition-colors ${
+                          isCorrecting
+                            ? 'bg-amber-600 text-white'
+                            : 'bg-rose-100 hover:bg-rose-200 text-rose-700 border border-rose-300'
+                        }`}
+                        title="Corrigir pergunta selecionada incorretamente pelo app"
+                      >
+                        <Edit3 className="w-2.5 h-2.5" />
+                        <span>Pergunta incorreta</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
+
+                {/* Smart Sentence Correction UI Box */}
+                {isCorrecting && (
+                  <div className="my-2 p-2.5 bg-amber-100/80 border border-amber-300 rounded-xl space-y-2 text-xs">
+                    <div className="flex items-center space-x-1.5 text-amber-900 font-bold text-[11px]">
+                      <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                      <span>Leitor Inteligente de Frase:</span>
+                    </div>
+                    <p className="text-[11px] text-amber-800 leading-tight">
+                      Selecione qualquer trecho, palavra ou letra da pergunta. O algoritmo expande para a frase inteira.
+                    </p>
+                    <div className="bg-white p-2 rounded-lg border border-amber-300 text-slate-900 text-xs font-medium">
+                      "{extractedCandidate || q.fullOriginalSentence || q.text}"
+                    </div>
+                    <div className="flex items-center space-x-2 pt-1">
+                      <button
+                        onClick={() => handleConfirmCorrection(q.id)}
+                        className="flex-1 py-1.5 px-3 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-lg flex items-center justify-center space-x-1 shadow-sm"
+                      >
+                        <CheckCheck className="w-3.5 h-3.5" />
+                        <span>Confirmar Frase Correta</span>
+                      </button>
+                      <button
+                        onClick={() => setActiveCorrectionQuestionId(null)}
+                        className="py-1.5 px-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold text-xs rounded-lg"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 {/* Render Question Inputs based on Type */}
                 {q.type === 'RADIO' && q.options && (
@@ -117,7 +253,7 @@ export const SurveyScreen: React.FC<SurveyScreenProps> = ({
                           }`}
                         >
                           <div
-                            className={`w-4 h-4 rounded-full border flex items-center justify-center transition-colors ${
+                            className={`w-4 h-4 rounded-full border flex items-center justify-center transition-colors shrink-0 ${
                               isSelected ? 'border-emerald-600 bg-emerald-600' : 'border-slate-300'
                             }`}
                           >
@@ -152,7 +288,7 @@ export const SurveyScreen: React.FC<SurveyScreenProps> = ({
                           }`}
                         >
                           <div
-                            className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${
+                            className={`w-4 h-4 rounded border flex items-center justify-center transition-colors shrink-0 ${
                               isChecked ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-slate-300'
                             }`}
                           >

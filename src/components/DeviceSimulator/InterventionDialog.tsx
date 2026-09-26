@@ -146,16 +146,23 @@ export const InterventionDialog: React.FC<InterventionDialogProps> = ({ request,
           /* Standard Missing Info / Manual Prompt (Section 6) */
           <div className="space-y-3">
             <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-3 space-y-1">
-              <span className="text-[11px] text-slate-400">Pergunta da pesquisa:</span>
-              <p className="text-xs font-semibold text-white">"{request.questionText}"</p>
-              <p className="text-[11px] text-rose-400 pt-1">Essa informação não está disponível no perfil.</p>
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] text-slate-400">Pergunta da pesquisa:</span>
+                <span className="text-[10px] bg-rose-500/20 text-rose-300 px-1.5 py-0.5 rounded font-mono">
+                  Identificação da tela
+                </span>
+              </div>
+              <p className="text-xs font-semibold text-rose-400">"{request.questionText}"</p>
+              <p className="text-[11px] text-slate-400 pt-0.5">
+                Essa informação precisa da sua confirmação ou não bate com o perfil.
+              </p>
             </div>
 
             {/* Answer Options if available */}
             {request.options && request.options.length > 0 ? (
               <div className="space-y-1.5 pt-1">
                 <span className="text-xs font-medium text-slate-300">Escolha uma resposta:</span>
-                <div className="grid grid-cols-1 gap-1.5 max-h-40 overflow-y-auto pr-1">
+                <div className="grid grid-cols-1 gap-1.5 max-h-36 overflow-y-auto pr-1">
                   {request.options.map((opt) => (
                     <button
                       key={opt}
@@ -184,8 +191,28 @@ export const InterventionDialog: React.FC<InterventionDialogProps> = ({ request,
               </div>
             )}
 
+            {/* Quick Resolution Buttons: JÁ RESOLVI & PERGUNTA INCORRETA */}
+            <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-800/80">
+              <button
+                onClick={() => onResolve(userAnswer || 'RESOLVIDO_PELO_USUARIO', false)}
+                className="py-2 px-2.5 bg-emerald-700/60 hover:bg-emerald-600 border border-emerald-500/50 text-white font-bold text-xs rounded-xl flex items-center justify-center space-x-1.5 transition-colors"
+                title="Pressionar após responder ou marcar na tela. No modo automático avança sozinho."
+              >
+                <Check className="w-3.5 h-3.5" />
+                <span>✓ Já resolvi na tela</span>
+              </button>
+
+              <button
+                onClick={onIgnore}
+                className="py-2 px-2.5 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 font-bold text-xs rounded-xl flex items-center justify-center space-x-1.5 transition-colors"
+                title="Fechar caixa para corrigir a pergunta diretamente na tela do simulador"
+              >
+                <span>✏ Pergunta incorreta</span>
+              </button>
+            </div>
+
             {/* Bottom Actions */}
-            <div className="grid grid-cols-2 gap-3 pt-2">
+            <div className="grid grid-cols-2 gap-3 pt-1">
               <button
                 onClick={handleConfirmAnswer}
                 disabled={!userAnswer.trim()}

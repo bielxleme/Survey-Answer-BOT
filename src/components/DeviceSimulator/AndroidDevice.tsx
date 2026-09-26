@@ -23,6 +23,10 @@ interface AndroidDeviceProps {
   onPause: () => void;
   onStop: () => void;
   onModeChange: (mode: AutomationMode) => void;
+  onCorrectQuestion?: (questionId: string, correctedText: string) => void;
+  recordDiagnosticLogs?: boolean;
+  onToggleDiagnosticLogs?: () => void;
+  onExportDiagnosticSummary?: () => void;
 }
 
 export const AndroidDevice: React.FC<AndroidDeviceProps> = ({
@@ -42,6 +46,10 @@ export const AndroidDevice: React.FC<AndroidDeviceProps> = ({
   onPause,
   onStop,
   onModeChange,
+  onCorrectQuestion,
+  recordDiagnosticLogs,
+  onToggleDiagnosticLogs,
+  onExportDiagnosticSummary,
 }) => {
   const [isPanelOpen, setIsPanelOpen] = useState(true);
   const [showAccessibilityOverlay, setShowAccessibilityOverlay] = useState(false);
@@ -157,6 +165,7 @@ export const AndroidDevice: React.FC<AndroidDeviceProps> = ({
               onAnswerChange={onAnswerChange}
               onNextPage={onNextPage}
               showAccessibilityOverlay={showAccessibilityOverlay}
+              onCorrectQuestion={onCorrectQuestion}
             />
 
             {/* Floating Bubble Component (Section 1) */}
@@ -183,6 +192,9 @@ export const AndroidDevice: React.FC<AndroidDeviceProps> = ({
                 totalSurveys={surveys.length}
                 currentQuestionIndex={0}
                 totalQuestions={currentPage.questions.length}
+                recordDiagnosticLogs={recordDiagnosticLogs}
+                onToggleDiagnosticLogs={onToggleDiagnosticLogs}
+                onExportDiagnosticSummary={onExportDiagnosticSummary}
               />
             )}
           </div>

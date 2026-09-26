@@ -248,6 +248,26 @@ class LogRepository(private val store: SecureStore) {
 
     fun clear() { _logs.value = emptyList(); persist() }
 
+    /**
+     * Exporta resumo ultra-compacto otimizado para diagnóstico por IA / Desenvolvedor.
+     * Gasta o mínimo de tokens (1 linha por evento de automação/erro) para rápida análise.
+     */
+    fun exportDiagnosticSummary(): String {
+        val list = _logs.value
+        if (list.isEmpty()) return "SEM_LOGS_REGISTRADOS"
+        val sb = StringBuilder()
+        sb.appendLine("# DIAGNOSTICO_RESEARCH_AGENT_COMPACTO (MIN_TOKENS)")
+        sb.appendLine("# HORA | PACOTE | TIPO | MENSAGEM | DETALHES | CONFIANCA")
+        val df = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.ROOT)
+        list.reversed().forEach { e ->
+            val time = df.format(java.util.Date(e.time))
+            val m = e.message.replace("\n", " ").replace("|", "/").take(60)
+            val d = e.detail.replace("\n", " ").replace("|", "/").take(90)
+            sb.appendLine("$time | ${e.packageName} | ${e.type.name} | $m | $d | ${e.confidence?.name ?: "-"}")
+        }
+        return sb.toString()
+    }
+
     private fun persist() {
         val snapshot = _logs.value
         ioScope.launch {

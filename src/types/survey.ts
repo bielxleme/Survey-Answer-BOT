@@ -36,6 +36,8 @@ export interface SurveyQuestion {
   profileMappingKey?: string; // e.g. "identidade.genero"
   isCaptcha?: boolean;
   needsUserInput?: boolean; // if deliberately tests missing info
+  fullOriginalSentence?: string;
+  needsCorrectionDemo?: boolean;
 }
 
 export interface SurveyPage {

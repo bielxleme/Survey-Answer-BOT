@@ -1,4 +1,4 @@
-import { AgentState, AutomationMode, AuditLogEntry, AgentMetrics, InterpretationResult, InterventionRequest } from '../types/agent';
+import { AgentState, AutomationMode, AuditLogEntry, AgentMetrics, InterpretationResult, InterventionRequest, DiagnosticLogEntry } from '../types/agent';
 import { UserProfile } from '../types/profile';
 import { SimulatedSurvey, SurveyQuestion } from '../types/survey';
 import { SemanticEngine } from './semanticEngine';
@@ -9,6 +9,8 @@ export interface AgentControllerCallbacks {
   onStateChange: (state: AgentState) => void;
   onMetricsUpdate: (metrics: AgentMetrics) => void;
   onLogAdded: (entry: AuditLogEntry) => void;
+  onDiagnosticLogAdded?: (entry: DiagnosticLogEntry) => void;
+  onScrollRequired?: (targetId: string) => void;
   onInterventionRequired: (req: InterventionRequest) => void;
   onQuestionHighlight: (questionId: string | null) => void;
   onQuestionAnswered: (questionId: string, value: any) => void;
@@ -26,6 +28,9 @@ export class AgentController {
   private isRunning: boolean = false;
   private isPaused: boolean = false;
   private callbacks: AgentControllerCallbacks;
+
+  private recordDiagnosticLogs: boolean = true;
+  private diagnosticLogs: DiagnosticLogEntry[] = [];
 
   private metrics: AgentMetrics = {
     surveysCompleted: 0,
@@ -45,6 +50,117 @@ export class AgentController {
   constructor(profile: UserProfile, callbacks: AgentControllerCallbacks) {
     this.profile = profile;
     this.callbacks = callbacks;
+  }
+
+  public setRecordDiagnosticLogs(enabled: boolean) {
+    this.recordDiagnosticLogs = enabled;
+  }
+
+  public getRecordDiagnosticLogs(): boolean {
+    return this.recordDiagnosticLogs;
+  }
+
+  public getDiagnosticLogs(): DiagnosticLogEntry[] {
+    return [...this.diagnosticLogs];
+  }
+
+  public clearDiagnosticLogs() {
+    this.diagnosticLogs = [];
+  }
+
+  /**
+   * Exporta resumo de diagnóstico em formato ultra-compacto.
+   * Feito especialmente para que você (assistente/engenheiro) compreenda o erro
+   * gastando o mínimo possível de tokens de contexto.
+   */
+  public exportDiagnosticSummary(): string {
+    if (this.diagnosticLogs.length === 0) {
+      return 'SEM_REGISTROS_DIAGNOSTICO_DISPONIVEIS';
+    }
+    const lines = [
+      '# DIAGNOSTICO_RESEARCH_AGENT_COMPACTO (MIN_TOKENS)',
+      '# FORMATO: HORA | APP | TELA | ACAO | ESPERADO | OBTIDO | STATUS | ERRO_MOTIVO | REMEDIO',
+    ];
+    this.diagnosticLogs.slice(0, 100).forEach((d) => {
+      lines.push(d.compactLine);
+    });
+    return lines.join('\n');
+  }
+
+  public addDiagnostic(entry: {
+    app: string;
+    surveyScreen: string;
+    action: string;
+    targetElement?: string;
+    expected: string;
+    actual: string;
+    status: 'SUCCESS' | 'WARNING' | 'ERROR' | 'SCROLLED';
+    errorReason?: string;
+    scrollAttempts?: number;
+    remedy?: string;
+  }) {
+    if (!this.recordDiagnosticLogs) return;
+    const time = new Date().toLocaleTimeString();
+    const compactLine = `${time} | ${entry.app} | ${entry.surveyScreen} | ${entry.action} | ${entry.expected} | ${entry.actual} | ${entry.status} | ${entry.errorReason || '-'} | ${entry.remedy || '-'}`;
+    
+    const fullEntry: DiagnosticLogEntry = {
+      id: `diag-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      timestamp: time,
+      ...entry,
+      compactLine,
+    };
+    this.diagnosticLogs.unshift(fullEntry);
+    this.callbacks.onDiagnosticLogAdded?.(fullEntry);
+  }
+
+  /**
+   * Permite corrigir uma pergunta lida incorretamente pelo agente.
+   * Utiliza a extração inteligente da frase completa.
+   */
+  public correctQuestionText(questionId: string, correctedText: string) {
+    if (!this.currentSurvey) return;
+    const page = this.currentSurvey.pages[this.currentPageIndex];
+    const q = page?.questions.find((x) => x.id === questionId);
+    if (q) {
+      const oldText = q.text;
+      q.text = correctedText;
+      q.needsCorrectionDemo = false;
+
+      this.addDiagnostic({
+        app: this.currentSurvey.appName,
+        surveyScreen: page.title,
+        action: 'CORRECAO_PERGUNTA_USUARIO',
+        targetElement: questionId,
+        expected: `Texto corrigido: "${correctedText}"`,
+        actual: `Texto anterior incorreto: "${oldText}"`,
+        status: 'SUCCESS',
+        remedy: 'Pergunta corrigida com sucesso via seleção inteligente de texto.',
+      });
+
+      this.addLog({
+        id: `correct-${Date.now()}`,
+        timestamp: new Date().toLocaleTimeString(),
+        surveyId: this.currentSurvey.id,
+        surveyTitle: this.currentSurvey.title,
+        questionIndex: this.currentQuestionIndex + 1,
+        questionText: correctedText,
+        responseGiven: '(Pergunta corrigida pelo usuário)',
+        confidenceLevel: 'CONFIDENCE_HIGH',
+        confidenceScore: 1.0,
+        sourceField: null,
+        status: 'LEARNED',
+        mode: this.mode,
+        durationMs: 0,
+        details: `Pergunta corrigida de "${oldText}" para "${correctedText}".`,
+      });
+
+      // Se a intervenção atual estava pausada nessa pergunta, retoma automaticamente
+      if (this.currentIntervention) {
+        this.currentIntervention = null;
+        this.isPaused = false;
+        this.runAutomationLoop();
+      }
+    }
   }
 
   public updateProfile(newProfile: UserProfile) {
@@ -235,6 +351,27 @@ export class AgentController {
           return;
         }
 
+        // Step: SCROLL_DETECTION (Verifica se opções ou respostas exigem rolagem de tela)
+        const chosen = String(decision.answer);
+        const optIndex = question.options?.findIndex((o) =>
+          o.toLowerCase().includes(chosen.toLowerCase()) || chosen.toLowerCase().includes(o.toLowerCase())
+        ) ?? -1;
+        if (optIndex >= 3 || (question.options && question.options.length > 5)) {
+          this.callbacks.onScrollRequired?.(question.id);
+          this.addDiagnostic({
+            app: this.currentSurvey.appName,
+            surveyScreen: currentPage.title,
+            action: 'ROLAGEM_DE_TELA_OPCAO',
+            targetElement: `opcao[${optIndex}]_${chosen}`,
+            expected: `Localizar opção "${chosen}"`,
+            actual: `Opção na posição ${optIndex + 1} de ${question.options?.length}. Rolagem executada para revelar elemento.`,
+            status: 'SCROLLED',
+            scrollAttempts: 1,
+            remedy: 'Rolagem completada com sucesso; opção agora visível.',
+          });
+          await this.delay(450);
+        }
+
         // Step: FILLING_FIELD
         this.transitionTo('FILLING_FIELD');
         audioService.playStepSound();
@@ -277,6 +414,10 @@ export class AgentController {
 
       // Finished questions on this page -> NEXT_PAGE
       if (this.currentPageIndex < this.currentSurvey.pages.length - 1) {
+        // Rola até o botão de avançar se necessário
+        this.callbacks.onScrollRequired?.('next-button');
+        await this.delay(350);
+
         this.transitionTo('NEXT_PAGE');
         audioService.playStepSound();
         await this.delay(500);
@@ -431,6 +572,28 @@ export class AgentController {
     this.currentQuestionIndex++;
     this.isPaused = false;
     this.currentIntervention = null;
+
+    // Modo Automático: se esta era a última pergunta da página, pressiona o botão de continuar automaticamente
+    if (this.currentSurvey) {
+      const page = this.currentSurvey.pages[this.currentPageIndex];
+      if (this.mode === 'AUTOMATICO' && this.currentQuestionIndex >= (page?.questions.length || 0)) {
+        if (this.currentPageIndex < this.currentSurvey.pages.length - 1) {
+          this.addDiagnostic({
+            app: this.currentSurvey.appName,
+            surveyScreen: page.title,
+            action: 'AVANCO_AUTOMATICO_CONTINUAR',
+            expected: 'Pressionar botão de continuar após resolução do usuário',
+            actual: 'Usuário resolveu questão. Botão de avançar acionado automaticamente.',
+            status: 'SUCCESS',
+            remedy: 'Avançado autonomamente para a próxima tela.',
+          });
+          this.callbacks.onPageAdvance();
+          this.currentPageIndex++;
+          this.currentQuestionIndex = 0;
+        }
+      }
+    }
+
     this.transitionTo('SCANNING');
     this.runAutomationLoop();
   }

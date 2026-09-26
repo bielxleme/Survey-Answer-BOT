@@ -1,5 +1,5 @@
-import React from 'react';
-import { Play, Pause, Square, X, Settings2, Eye, ShieldAlert, CheckCircle2 } from 'lucide-react';
+import React, { useState } from 'react';
+import { Play, Pause, Square, X, Eye, FileText, Check, Copy, Power, Brain, Wand2, Info } from 'lucide-react';
 import { AgentState, AutomationMode, AgentMetrics } from '../../types/agent';
 
 interface FloatingPanelProps {
@@ -17,6 +17,12 @@ interface FloatingPanelProps {
   totalSurveys: number;
   currentQuestionIndex: number;
   totalQuestions: number;
+  recordDiagnosticLogs?: boolean;
+  onToggleDiagnosticLogs?: () => void;
+  onExportDiagnosticSummary?: () => void;
+  guessMode?: boolean;
+  onToggleGuessMode?: () => void;
+  onShutdownApp?: () => void;
 }
 
 export const FloatingPanel: React.FC<FloatingPanelProps> = ({
@@ -34,7 +40,15 @@ export const FloatingPanel: React.FC<FloatingPanelProps> = ({
   totalSurveys,
   currentQuestionIndex,
   totalQuestions,
+  recordDiagnosticLogs = true,
+  onToggleDiagnosticLogs,
+  onExportDiagnosticSummary,
+  guessMode = false,
+  onToggleGuessMode,
+  onShutdownApp,
 }) => {
+  const [copiedDiag, setCopiedDiag] = useState(false);
+  const [teachingMode, setTeachingMode] = useState(false);
   const isRunning = state !== 'IDLE' && state !== 'USER_INTERVENTION_REQUIRED';
 
   const getStateDescription = () => {
@@ -42,7 +56,7 @@ export const FloatingPanel: React.FC<FloatingPanelProps> = ({
       case 'IDLE':
         return { text: '● Pronto', color: 'text-emerald-400' };
       case 'SCANNING':
-        return { text: '● Escaneando Tela', color: 'text-cyan-400' };
+        return { text: '● Escaneando / Rolando Tela', color: 'text-cyan-400' };
       case 'RESEARCH_DETECTED':
         return { text: '● Pesquisa Detectada', color: 'text-cyan-400' };
       case 'READING_QUESTION':
@@ -74,13 +88,21 @@ export const FloatingPanel: React.FC<FloatingPanelProps> = ({
 
   const statusInfo = getStateDescription();
 
+  const handleExportDiag = () => {
+    if (onExportDiagnosticSummary) {
+      onExportDiagnosticSummary();
+      setCopiedDiag(true);
+      setTimeout(() => setCopiedDiag(false), 2000);
+    }
+  };
+
   return (
-    <div className="absolute top-20 right-4 z-40 w-72 bg-slate-900/95 backdrop-blur-md border border-slate-700/80 rounded-2xl shadow-2xl p-4 text-white font-sans transition-all">
+    <div className="absolute top-16 right-3 z-40 w-72 bg-slate-900/95 backdrop-blur-md border border-slate-700/80 rounded-2xl shadow-2xl p-3.5 text-white font-sans transition-all max-h-[620px] overflow-y-auto">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-slate-800 pb-2 mb-3">
+      <div className="flex items-center justify-between border-b border-slate-800 pb-2 mb-2.5">
         <div className="flex items-center space-x-2">
           <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></div>
-          <span className="font-bold text-xs tracking-wider text-slate-200">RESEARCH AGENT</span>
+          <span className="font-bold text-xs tracking-wider text-slate-200">RESEARCH AGENT v2.3</span>
         </div>
         <button
           onClick={onClose}
@@ -91,7 +113,7 @@ export const FloatingPanel: React.FC<FloatingPanelProps> = ({
       </div>
 
       {/* Mode Badge & State Line */}
-      <div className="bg-slate-950/70 rounded-xl p-2.5 mb-3 border border-slate-800/80">
+      <div className="bg-slate-950/70 rounded-xl p-2.5 mb-2.5 border border-slate-800/80">
         <div className="flex items-center justify-between text-xs mb-1">
           <span className="font-semibold text-slate-400">Modo:</span>
           <span
@@ -107,7 +129,7 @@ export const FloatingPanel: React.FC<FloatingPanelProps> = ({
           </span>
         </div>
 
-        <div className="flex items-center space-x-1.5 mt-2">
+        <div className="flex items-center space-x-1.5 mt-1.5">
           <span className={`text-xs font-semibold ${statusInfo.color}`}>{statusInfo.text}</span>
         </div>
 
@@ -129,8 +151,8 @@ export const FloatingPanel: React.FC<FloatingPanelProps> = ({
         )}
       </div>
 
-      {/* Action Buttons */}
-      <div className="space-y-2 mb-3">
+      {/* Primary Action Buttons */}
+      <div className="space-y-1.5 mb-2.5">
         {!isRunning ? (
           <button
             onClick={onActivate}
@@ -159,18 +181,82 @@ export const FloatingPanel: React.FC<FloatingPanelProps> = ({
         )}
       </div>
 
-      {/* Counters (Section 1 of Prompt) */}
-      <div className="bg-slate-800/40 rounded-xl p-2.5 border border-slate-800 text-xs space-y-1 mb-3">
+      {/* v2.2 & v2.3 Advanced Tools: Gravar Logs, Ensinar, Chutar */}
+      <div className="bg-slate-950/60 rounded-xl p-2 border border-slate-800/80 space-y-2 mb-2.5 text-xs">
+        {/* Gravar Logs de Diagnóstico (Requisito do usuário) */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-1.5 text-slate-300">
+            <FileText className="w-3.5 h-3.5 text-cyan-400" />
+            <span className="text-[11px] font-medium">Gravar Logs (Diagnóstico)</span>
+          </div>
+          <button
+            onClick={onToggleDiagnosticLogs}
+            className={`w-9 h-5 rounded-full transition-colors relative ${
+              recordDiagnosticLogs ? 'bg-cyan-600' : 'bg-slate-700'
+            }`}
+          >
+            <span
+              className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${
+                recordDiagnosticLogs ? 'left-4.5' : 'left-0.5'
+              }`}
+            />
+          </button>
+        </div>
+
+        {/* Exportar Diagnóstico para Análise Rápida (Consumo Mínimo de Tokens) */}
+        {recordDiagnosticLogs && onExportDiagnosticSummary && (
+          <button
+            onClick={handleExportDiag}
+            className="w-full py-1.5 px-2 bg-cyan-950 hover:bg-cyan-900 border border-cyan-800/60 text-cyan-300 text-[10px] font-semibold rounded-lg flex items-center justify-center space-x-1.5 transition-colors"
+            title="Exportar logs compactos para o engenheiro/IA analisar erros com gasto mínimo de tokens"
+          >
+            {copiedDiag ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+            <span>{copiedDiag ? 'Copiado para Clipboard!' : 'Exportar Logs (Tokens Mínimos)'}</span>
+          </button>
+        )}
+
+        {/* Ensinar Pesquisa / Observar (Nota: Toques na bolha são ignorados) */}
+        <div className="pt-1.5 border-t border-slate-800/80 flex items-center justify-between">
+          <div className="flex flex-col">
+            <span className="text-[11px] text-slate-300 font-medium">🧠 Ensinar (Observar)</span>
+            <span className="text-[9px] text-slate-500">Toques na bolha são ignorados</span>
+          </div>
+          <button
+            onClick={() => setTeachingMode(!teachingMode)}
+            className={`px-2 py-0.5 text-[10px] font-bold rounded ${
+              teachingMode ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400'
+            }`}
+          >
+            {teachingMode ? 'Ativo' : 'Ligar'}
+          </button>
+        </div>
+
+        {/* Chutar Respostas */}
+        <div className="flex items-center justify-between">
+          <span className="text-[11px] text-slate-300 font-medium">🎯 Chutar respostas</span>
+          <button
+            onClick={onToggleGuessMode}
+            className={`px-2 py-0.5 text-[10px] font-bold rounded ${
+              guessMode ? 'bg-purple-600 text-white' : 'bg-slate-800 text-slate-400'
+            }`}
+          >
+            {guessMode ? 'Ativo' : 'Desligado'}
+          </button>
+        </div>
+      </div>
+
+      {/* Counters */}
+      <div className="bg-slate-800/40 rounded-xl p-2 border border-slate-800 text-[11px] space-y-1 mb-2.5">
         <div className="flex justify-between items-center text-slate-300">
           <span>Pesquisas concluídas:</span>
-          <span className="font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded">
+          <span className="font-mono font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">
             {metrics.surveysCompleted}
           </span>
         </div>
         <div className="flex justify-between items-center text-slate-300">
           <span>Aguardando usuário:</span>
           <span
-            className={`font-mono font-bold px-2 py-0.5 rounded ${
+            className={`font-mono font-bold px-1.5 py-0.5 rounded ${
               metrics.interventionsRequired > 0
                 ? 'text-rose-400 bg-rose-500/10 animate-pulse'
                 : 'text-slate-400 bg-slate-800'
@@ -181,19 +267,19 @@ export const FloatingPanel: React.FC<FloatingPanelProps> = ({
         </div>
       </div>
 
-      {/* Secondary Controls: Accessibility overlay toggle & Mode quick switch */}
-      <div className="flex items-center justify-between pt-2 border-t border-slate-800 text-[11px]">
+      {/* Bottom Controls: Accessibility Overlay & Mode Toggle & Shutdown */}
+      <div className="flex items-center justify-between pt-2 border-t border-slate-800 text-[10px]">
         <button
           onClick={onToggleAccessibilityOverlay}
-          className={`flex items-center space-x-1 px-2 py-1 rounded transition-colors ${
+          className={`flex items-center space-x-1 px-1.5 py-1 rounded transition-colors ${
             showAccessibilityOverlay
               ? 'bg-cyan-500/20 text-cyan-300 font-semibold'
               : 'text-slate-400 hover:text-slate-200'
           }`}
-          title="Revelar sobreposição de nós da Accessibility Tree"
+          title="Ver hierarquia de AccessibilityNodeInfo"
         >
-          <Eye className="w-3.5 h-3.5" />
-          <span>Árvore A11y</span>
+          <Eye className="w-3 h-3" />
+          <span>A11y</span>
         </button>
 
         <div className="flex space-x-1">
@@ -201,7 +287,7 @@ export const FloatingPanel: React.FC<FloatingPanelProps> = ({
             <button
               key={m}
               onClick={() => onModeChange(m)}
-              className={`px-1.5 py-0.5 rounded text-[10px] uppercase font-semibold transition-colors ${
+              className={`px-1.5 py-0.5 rounded uppercase font-semibold transition-colors ${
                 mode === m ? 'bg-slate-700 text-white font-bold' : 'text-slate-500 hover:text-slate-300'
               }`}
             >
@@ -209,6 +295,16 @@ export const FloatingPanel: React.FC<FloatingPanelProps> = ({
             </button>
           ))}
         </div>
+
+        {onShutdownApp && (
+          <button
+            onClick={onShutdownApp}
+            className="text-rose-400 hover:text-rose-300 p-1 rounded hover:bg-rose-500/10 transition-colors"
+            title="Encerrar aplicativo (desativa bolha e automação)"
+          >
+            <Power className="w-3.5 h-3.5" />
+          </button>
+        )}
       </div>
     </div>
   );

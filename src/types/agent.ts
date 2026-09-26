@@ -78,3 +78,20 @@ export interface AgentMetrics {
   startTime: number | null;
   totalAutomatedTimeMs: number;
 }
+
+export interface DiagnosticLogEntry {
+  id: string;
+  timestamp: string;
+  app: string;
+  surveyScreen: string;
+  action: string;
+  targetElement?: string;
+  expected: string;
+  actual: string;
+  status: 'SUCCESS' | 'WARNING' | 'ERROR' | 'SCROLLED';
+  errorReason?: string;
+  scrollAttempts?: number;
+  remedy?: string;
+  compactLine: string;
+}
+

@@ -153,6 +153,9 @@ object Observer {
         val src = event.source
         if (src?.isPassword == true || event.isPassword) return // nunca observa senhas
         val r = Rect().also { src?.getBoundsInScreen(it) }
+        // ignora cliques na própria bolha flutuante durante a observação/ensino
+        val bubble = service.overlayController?.getBubbleBounds()
+        if (bubble != null && !bubble.isEmpty && Rect.intersects(bubble, r)) return
         val evText = event.text.joinToString(" ") { it.toString() }.trim()
         val srcText = src?.text?.toString().orEmpty().ifBlank { if (type == AccessibilityEvent.TYPE_VIEW_CLICKED) evText else "" }
         val srcDesc = src?.contentDescription?.toString().orEmpty().ifBlank { event.contentDescription?.toString().orEmpty() }

@@ -8,10 +8,11 @@ import { JsonEditorModal } from './components/ProfileView/JsonEditorModal';
 import { DashboardView } from './components/DashboardView/DashboardView';
 import { PrivacyVaultView } from './components/PrivacyView/PrivacyVaultView';
 import { AndroidCodeExplorer } from './components/CodeExplorerView/AndroidCodeExplorer';
+import { HelpView } from './components/HelpView/HelpView';
 import { OfflineIndicator } from './components/OfflineIndicator';
 
 import { UserProfile } from './types/profile';
-import { AgentState, AutomationMode, AgentMetrics, AuditLogEntry, InterventionRequest } from './types/agent';
+import { AgentState, AutomationMode, AgentMetrics, AuditLogEntry, DiagnosticLogEntry, InterventionRequest } from './types/agent';
 import { SimulatedSurvey } from './types/survey';
 import { SAMPLE_SURVEYS } from './data/sampleSurveys';
 import { ProfileService } from './services/profileService';
@@ -19,7 +20,7 @@ import { AgentController } from './services/agentController';
 import { audioService } from './services/audioService';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'simulator' | 'profile' | 'dashboard' | 'privacy' | 'code'>('simulator');
+  const [activeTab, setActiveTab] = useState<'simulator' | 'profile' | 'dashboard' | 'privacy' | 'code' | 'help'>('simulator');
   const [profile, setProfile] = useState<UserProfile>(() => ProfileService.loadProfile());
   const [surveys, setSurveys] = useState<SimulatedSurvey[]>(SAMPLE_SURVEYS);
   const [currentSurveyIndex, setCurrentSurveyIndex] = useState(0);
@@ -41,6 +42,9 @@ export default function App() {
   });
 
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
+  const [diagnosticLogs, setDiagnosticLogs] = useState<DiagnosticLogEntry[]>([]);
+  const [recordDiagnosticLogs, setRecordDiagnosticLogs] = useState<boolean>(true);
+
   const [currentIntervention, setCurrentIntervention] = useState<InterventionRequest | null>(null);
   const [showWizard, setShowWizard] = useState(false);
   const [showJsonModal, setShowJsonModal] = useState(false);
@@ -54,6 +58,7 @@ export default function App() {
       onStateChange: (state) => setAgentState(state),
       onMetricsUpdate: (updated) => setMetrics(updated),
       onLogAdded: (entry) => setLogs((prev) => [entry, ...prev]),
+      onDiagnosticLogAdded: (dEntry) => setDiagnosticLogs((prev) => [dEntry, ...prev]),
       onInterventionRequired: (req) => setCurrentIntervention(req),
       onQuestionHighlight: (qid) => setHighlightedQuestionId(qid),
       onQuestionAnswered: (qid, val) => {
@@ -71,6 +76,7 @@ export default function App() {
 
     controller.setSurvey(surveys[currentSurveyIndex], pageIndex);
     controller.setMode(mode);
+    controller.setRecordDiagnosticLogs(recordDiagnosticLogs);
     controllerRef.current = controller;
 
     return () => {
@@ -155,6 +161,37 @@ export default function App() {
     controllerRef.current?.resumeAfterIntervention(undefined, false);
   };
 
+  const handleCorrectQuestion = (questionId: string, correctedText: string) => {
+    controllerRef.current?.correctQuestionText(questionId, correctedText);
+    setSurveys((prev) =>
+      prev.map((s, sIdx) => {
+        if (sIdx !== currentSurveyIndex) return s;
+        return {
+          ...s,
+          pages: s.pages.map((p, pIdx) => {
+            if (pIdx !== pageIndex) return p;
+            return {
+              ...p,
+              questions: p.questions.map((q) =>
+                q.id === questionId ? { ...q, text: correctedText, needsCorrectionDemo: false } : q
+              ),
+            };
+          }),
+        };
+      })
+    );
+  };
+
+  const handleToggleDiagnosticLogs = () => {
+    const next = !recordDiagnosticLogs;
+    setRecordDiagnosticLogs(next);
+    controllerRef.current?.setRecordDiagnosticLogs(next);
+  };
+
+  const handleExportDiagnosticSummary = () => {
+    return controllerRef.current?.exportDiagnosticSummary() || 'SEM_LOGS_DISPONIVEIS';
+  };
+
   const handleToggleMute = () => {
     const next = !isMuted;
     setIsMuted(next);
@@ -163,6 +200,8 @@ export default function App() {
 
   const handleClearLogs = () => {
     setLogs([]);
+    setDiagnosticLogs([]);
+    controllerRef.current?.clearDiagnosticLogs();
   };
 
   const handleResetProfile = () => {
@@ -205,6 +244,13 @@ export default function App() {
             onPause={handlePauseAgent}
             onStop={handleStopAgent}
             onModeChange={setMode}
+            onCorrectQuestion={handleCorrectQuestion}
+            recordDiagnosticLogs={recordDiagnosticLogs}
+            onToggleDiagnosticLogs={handleToggleDiagnosticLogs}
+            onExportDiagnosticSummary={() => {
+              const summary = handleExportDiagnosticSummary();
+              navigator.clipboard.writeText(summary);
+            }}
           />
         )}
 
@@ -219,12 +265,22 @@ export default function App() {
         )}
 
         {activeTab === 'dashboard' && (
-          <DashboardView metrics={metrics} logs={logs} onClearLogs={handleClearLogs} />
+          <DashboardView
+            metrics={metrics}
+            logs={logs}
+            diagnosticLogs={diagnosticLogs}
+            recordDiagnosticLogs={recordDiagnosticLogs}
+            onToggleDiagnosticLogs={handleToggleDiagnosticLogs}
+            onClearLogs={handleClearLogs}
+            onExportDiagnosticSummary={handleExportDiagnosticSummary}
+          />
         )}
 
         {activeTab === 'privacy' && <PrivacyVaultView profile={profile} />}
 
         {activeTab === 'code' && <AndroidCodeExplorer />}
+
+        {activeTab === 'help' && <HelpView />}
       </main>
 
       {/* Intervention Dialog (Section 6, 15, 16, 26) */}

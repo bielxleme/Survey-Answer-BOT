@@ -518,6 +518,16 @@ class AgentEngine(
                     if (real.isEmpty()) "Tela avançou após sua ação" else "Resposta detectada: ${real.joinToString()}"))
                 host.onEvent(AgentEvent.Resumed(now.packageName, "Automação retomada após verificação"))
                 saveTask("running", q, real, nextAction = "continue", signature = now.signature)
+
+                // Modo automático: assim que o usuário resolve (marca/escreve/seleciona), se houver botão de avançar/continuar, pressiona-o
+                if (host.policy().mode == AgentMode.AUTOMATIC) {
+                    val nextBtn = page.nextButton ?: page.submitButton
+                    if (nextBtn != null) {
+                        setState(AgentState.NEXT_PAGE, "Tocando em \"${nextBtn.label}\" para continuar…")
+                        driver.click(nextBtn)
+                        driver.awaitChange(now, 1500)
+                    }
+                }
                 return
             }
             // não detectou: não avança e avisa (Seção 14)
@@ -547,12 +557,30 @@ class AgentEngine(
         return when (q.type) {
             QuestionType.SINGLE_CHOICE, QuestionType.MULTI_CHOICE -> {
                 var any = false
+                var currentSnap = snap
+                var currentQ = q
                 for (ans in d.answers) {
-                    val opt = q.options.firstOrNull { Text.looselyEquals(it.text, ans) }
-                        ?: q.options.firstOrNull { AnswerEngine.matchesText(it.text, ans) }
-                        ?: continue
+                    var opt = currentQ.options.firstOrNull { Text.looselyEquals(it.text, ans) }
+                        ?: currentQ.options.firstOrNull { AnswerEngine.matchesText(it.text, ans) }
+
+                    // Se a opção não couber na tela, rola para baixo buscando a resposta (Seção 40)
+                    var scrolls = 0
+                    while (opt == null && scrolls < 3 && driver.scrollForward()) {
+                        scrolls++
+                        setState(AgentState.SCANNING, "Rolando para buscar opção \"$ans\"…")
+                        val scrolled = driver.awaitChange(currentSnap, 1200) ?: driver.snapshot()
+                        if (scrolled != null) {
+                            currentSnap = scrolled
+                            val page = SurveyAnalyzer.analyze(scrolled, host.knowledge())
+                            currentQ = page.questions.firstOrNull { it.key == q.key } ?: currentQ
+                            opt = currentQ.options.firstOrNull { Text.looselyEquals(it.text, ans) }
+                                ?: currentQ.options.firstOrNull { AnswerEngine.matchesText(it.text, ans) }
+                        }
+                    }
+
+                    if (opt == null) continue
                     if (opt.checked) { any = true; continue }
-                    val node = snap.node(opt.nodeId) ?: continue
+                    val node = currentSnap.node(opt.nodeId) ?: continue
                     if (driver.click(node)) any = true
                     if (q.type == QuestionType.SINGLE_CHOICE) break
                     delay(250)

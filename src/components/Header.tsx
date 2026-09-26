@@ -8,13 +8,14 @@ import {
   Volume2,
   VolumeX,
   Download,
+  HelpCircle,
 } from 'lucide-react';
 import { AutomationMode } from '../types/agent';
 import { PWAInstallButton } from './PWAInstallButton';
 
 interface HeaderProps {
-  activeTab: 'simulator' | 'profile' | 'dashboard' | 'privacy' | 'code';
-  onTabChange: (tab: 'simulator' | 'profile' | 'dashboard' | 'privacy' | 'code') => void;
+  activeTab: 'simulator' | 'profile' | 'dashboard' | 'privacy' | 'code' | 'help';
+  onTabChange: (tab: 'simulator' | 'profile' | 'dashboard' | 'privacy' | 'code' | 'help') => void;
   mode: AutomationMode;
   onModeChange: (mode: AutomationMode) => void;
   isMuted: boolean;
@@ -113,6 +114,18 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <Code2 className="w-3.5 h-3.5" />
               <span>Código Kotlin</span>
+            </button>
+
+            <button
+              onClick={() => onTabChange('help')}
+              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                activeTab === 'help'
+                  ? 'bg-emerald-500 text-slate-950 shadow-sm font-bold'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-700/50'
+              }`}
+            >
+              <HelpCircle className="w-3.5 h-3.5" />
+              <span>Ajuda</span>
             </button>
           </nav>
 

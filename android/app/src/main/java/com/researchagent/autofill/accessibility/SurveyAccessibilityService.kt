@@ -37,6 +37,7 @@ class SurveyAccessibilityService : AccessibilityService() {
     lateinit var driver: AccessibilityDriver
         private set
     private var overlay: OverlayController? = null
+    val overlayController: OverlayController? get() = overlay
 
     override fun onServiceConnected() {
         super.onServiceConnected()

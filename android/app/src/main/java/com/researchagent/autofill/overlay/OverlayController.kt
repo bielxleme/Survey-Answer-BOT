@@ -141,6 +141,12 @@ class OverlayController(private val service: SurveyAccessibilityService) {
         wm.addView(bubble, bubbleParams)
     }
 
+    fun getBubbleBounds(): Rect {
+        if (!::bubbleParams.isInitialized) return Rect()
+        val size = dp(52)
+        return Rect(bubbleParams.x, bubbleParams.y, bubbleParams.x + size, bubbleParams.y + size)
+    }
+
     private fun snapToEdge() {
         val w = service.resources.displayMetrics.widthPixels
         val target = if (bubbleParams.x + dp(26) < w / 2) 0 else w - dp(52)
@@ -457,7 +463,13 @@ class OverlayController(private val service: SurveyAccessibilityService) {
         header.addView(text("⚠ AÇÃO NECESSÁRIA", 15f, cRed, bold = true))
         col.addView(header)
         col.addView(text("Motivo: ${i.reason.title}", 13f, cText, bold = true, top = 4))
-        i.question?.let { col.addView(text("\"${it.text.take(140)}\"", 13f, cRed, top = 4)) }
+        i.question?.let {
+            col.addView(text("\"${it.text.take(140)}\"", 13f, cRed, top = 4))
+            col.addView(button("✏ Pergunta incorreta", cAmber) {
+                toastLike("Toque na frase da pergunta: vou ler e reconhecer a frase completa.")
+                minimize(i, silent = true)
+            })
+        }
         col.addView(text(i.message.take(220), 12f, cMuted, top = 4))
 
         when (i.reason) {
