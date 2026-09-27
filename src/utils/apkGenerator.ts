@@ -36,3 +36,8 @@ export function findNativeApk(): Buffer | null {
   }
   return null;
 }
+
+/** Compatibilidade: retorna o APK nativo se existir, ou null. */
+export function getOrGenerateApk(): Buffer | null {
+  return findNativeApk();
+}
