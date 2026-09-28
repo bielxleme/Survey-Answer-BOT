@@ -78,15 +78,25 @@ object SettingsScreen {
             upd { it.copy(bandMid = minOf(v / 100.0, it.bandGood - 0.01)) }; showBands()
         }
 
-        // Privacidade (Seção 21)
-        val priv = ui.card(page, "Privacidade")
+        // Privacidade e Proteção de Dados (Seção 21)
+        val priv = ui.card(page, "Privacidade e Proteção de Dados")
         ui.switchRow(priv, "Registrar respostas nos logs", "Campos sensíveis são sempre mascarados.", s.logAnswers) { v -> upd { it.copy(logAnswers = v) } }
         ui.switchRow(priv, "Bloquear capturas de tela do app", "Protege seus dados em prints e na tela de recentes.", s.secureScreens) { v ->
             upd { it.copy(secureScreens = v) }
             a.recreate()
         }
-        priv.addView(ui.muted("Perfil, logs e aprendizado ficam criptografados (Android Keystore, AES-256-GCM) só neste aparelho. " +
-            "Backup em nuvem desativado.", 12f, top = 8))
+        priv.addView(ui.muted("Perfil, logs e aprendizado são criptografados localmente (AES-256-GCM) com chave segura vinculada ao dispositivo.", 12f, top = 8))
+
+        // Desinstalação e Preservação de Dados
+        val retain = ui.card(page, "Manter dados ao desinstalar")
+        retain.addView(ui.muted("Quando você desinstalar o aplicativo, o Android exibirá a opção \"Manter dados do app\". " +
+            "Mantenha-a marcada para preservar todos os cadastros no aparelho.", 12.5f))
+        retain.addView(ui.muted("O backup automático também salva uma cópia persistente em Documentos/ResearchAgent e no Google Cloud Backup. " +
+            "Ao reinstalar o aplicativo, todos os seus dados e respostas são restaurados automaticamente sem precisar refazer os cadastros.", 12f, top = 6))
+        ui.buttonRow(retain,
+            ui.button("Criar cópia agora", outlined = true) { a.backupNow() },
+            ui.button("Restaurar cópia", outlined = true) { a.restoreBackupNow() },
+            top = 10)
 
         // Salário mínimo
         val wage = ui.card(page, "Faixas em salários mínimos")

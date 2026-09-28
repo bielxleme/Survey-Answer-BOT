@@ -50,6 +50,24 @@ object AppGraph {
         knowledge = KnowledgeRepository(store)
         learning = LearningRepository(store)
         Notifier.createChannels(application)
+
+        // Restaura automaticamente do backup persistente caso o usuário tenha reinstalado o app
+        if (profile.current.values.isEmpty()) {
+            com.researchagent.autofill.data.DataBackupManager.restoreBackup(application)?.let { (restoredProfile, restoredLearned) ->
+                if (restoredProfile.values.isNotEmpty()) {
+                    profile.replace(restoredProfile)
+                    restoredLearned.forEach { (q, f) -> knowledge.recordLearned(q, f) }
+                    logs.add(LogEntry(System.currentTimeMillis(), LogType.INFO, "", "Restauração automática", "Perfil e cadastros restaurados de backup permanente (${restoredProfile.values.size} campos)."))
+                }
+            }
+        }
+    }
+
+    fun triggerAutoBackup() {
+        if (!::app.isInitialized) return
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            com.researchagent.autofill.data.DataBackupManager.saveBackup(app, profile.current, knowledge.learned.value)
+        }
     }
 
     fun classifier(): QuestionClassifier {

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- Regras de backup para Android 11 e anteriores -->
+    <include domain="file" path="secure" />
+    <include domain="file" path="backup" />
+    <include domain="sharedpref" path="." />
+</full-backup-content>

@@ -1,15 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <data-extraction-rules>
+    <!-- Permite backup em nuvem (Google Drive) e transferência entre aparelhos para que o usuário não perca cadastros ao desinstalar/reinstalar -->
     <cloud-backup>
-        <exclude domain="root" />
-        <exclude domain="file" />
-        <exclude domain="database" />
-        <exclude domain="sharedpref" />
+        <include domain="file" path="secure" />
+        <include domain="file" path="backup" />
+        <include domain="sharedpref" path="." />
     </cloud-backup>
     <device-transfer>
-        <exclude domain="root" />
-        <exclude domain="file" />
-        <exclude domain="database" />
-        <exclude domain="sharedpref" />
+        <include domain="file" path="secure" />
+        <include domain="file" path="backup" />
+        <include domain="sharedpref" path="." />
     </device-transfer>
 </data-extraction-rules>

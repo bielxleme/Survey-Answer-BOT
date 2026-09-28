@@ -86,7 +86,7 @@ Nenhuma regra é específica de um app. O Pawns.app serve apenas como exemplo de
 - Respostas da IA passam pelo `AnswerValidator`: precisam citar um campo enviado, ser uma opção existente e ser comprovadas pelo valor.
 - Envio mínimo à IA: 1º só os **nomes** dos campos disponíveis; 2º só os valores relevantes. Campos 🔒 (CPF, renda, e-mail, telefone…) nunca saem do aparelho.
 - CAPTCHA, login/2FA, telas de pagamento, apps bancários/mensageiros e conflitos sempre pausam.
-- Perfil, logs e aprendizado criptografados; backup em nuvem desativado; telas protegidas contra captura (opcional).
+- Perfil, logs e aprendizado criptografados em repouso (AES-256-GCM); preservação de dados ao desinstalar (hasFragileUserData + backup persistente); telas protegidas contra captura (opcional).
 
 ## Testes
 

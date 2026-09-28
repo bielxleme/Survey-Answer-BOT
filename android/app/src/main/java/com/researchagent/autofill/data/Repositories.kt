@@ -57,6 +57,9 @@ class ProfileRepository(private val store: SecureStore) {
             o.put("values", JSONObject(p.values as Map<*, *>))
             o.put("labels", JSONObject(p.customLabels as Map<*, *>))
             store.writeText(FILE, o.toString())
+            runCatching {
+                com.researchagent.autofill.AppGraph.triggerAutoBackup()
+            }
         }
     }
 
@@ -402,6 +405,12 @@ class KnowledgeRepository(private val store: SecureStore) {
     @Synchronized
     fun clearPending() { _pending.value = emptyList(); persist() }
 
+    @Synchronized
+    fun recordLearned(question: String, fieldKey: String) {
+        _learned.value = _learned.value + (question to fieldKey)
+        persist()
+    }
+
     private fun persist() {
         val learned = _learned.value
         val pending = _pending.value
@@ -417,6 +426,9 @@ class KnowledgeRepository(private val store: SecureStore) {
             }
             o.put("pending", arr)
             store.writeText(FILE, o.toString())
+            runCatching {
+                com.researchagent.autofill.AppGraph.triggerAutoBackup()
+            }
         }
     }
 

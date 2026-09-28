@@ -256,6 +256,23 @@ class MainActivity : Activity() {
         }
     }
 
+    fun backupNow() {
+        AppGraph.triggerAutoBackup()
+        toast("Cópia de segurança criada com sucesso!")
+    }
+
+    fun restoreBackupNow() {
+        val res = com.researchagent.autofill.data.DataBackupManager.restoreBackup(this)
+        if (res != null && (res.first.values.isNotEmpty() || res.second.isNotEmpty())) {
+            AppGraph.profile.replace(res.first)
+            res.second.forEach { (q, f) -> AppGraph.knowledge.recordLearned(q, f) }
+            toast("Restaurado: ${res.first.values.size} campos e ${res.second.size} aprendizados!")
+            render()
+        } else {
+            toast("Nenhuma cópia de segurança anterior encontrada")
+        }
+    }
+
     fun requestNotificationPermission() {
         if (Build.VERSION.SDK_INT >= 33) requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQ_NOTIF)
     }
