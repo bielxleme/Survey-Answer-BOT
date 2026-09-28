@@ -143,6 +143,8 @@ object Screens {
         ui.statRow(st, "Perguntas desconhecidas", stats.unknownQuestions.toString())
         ui.statRow(st, "Taxa de alta confiança", "${stats.highConfidenceRate}%")
         ui.statRow(st, "Tempo automatizado", formatDuration(stats.automatedMs))
+        ui.statRow(st, "Registros no histórico", "${AppGraph.logs.logs.value.size} / 1.000.000")
+        ui.fullButton(st, ui.button("📜 VER HISTÓRICO", Palette.Green, outlined = true) { a.viewHistory() }, top = 12)
 
         if (pending.isNotEmpty()) {
             val c = ui.card(page, "🔴 ${pending.size} pergunta(s) sem resposta no perfil", Palette.Red)
@@ -167,8 +169,10 @@ object Screens {
         val ui = a.ui
         val logs = AppGraph.logs.logs.value
         val head = ui.card(page, "Histórico")
-        head.addView(ui.muted("${logs.size} registros (máx. 600). Respostas de campos sensíveis são mascaradas.", 13f))
-        ui.fullButton(head, ui.button("APAGAR HISTÓRICO", Palette.Red, outlined = true) {
+        head.addView(ui.muted("${logs.size} registros (máx. 1.000.000). Respostas de campos sensíveis são mascaradas.", 13f))
+
+        val btnRow = ui.row()
+        btnRow.addView(ui.button("APAGAR HISTÓRICO", Palette.Red, outlined = true) {
             a.dialogOpen = true
             AlertDialog.Builder(a)
                 .setTitle("Apagar histórico?")
@@ -177,15 +181,28 @@ object Screens {
                 .setNegativeButton("Cancelar", null)
                 .setOnDismissListener { a.dialogOpen = false; a.render() }
                 .show()
-        }, top = 10)
+        }, ui.lp(0, weight = 1f, right = 4))
+        btnRow.addView(ui.button("EXPORTAR RESUMO", Palette.Green, outlined = true) {
+            val summary = AppGraph.logs.exportDiagnosticSummary()
+            val clipboard = a.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+            clipboard?.setPrimaryClip(android.content.ClipData.newPlainText("ResearchAgent Logs", summary))
+            a.toast("Resumo copiado para a área de transferência!")
+        }, ui.lp(0, weight = 1f, left = 4))
+        head.addView(btnRow, ui.lp(top = 10))
+
         if (logs.isEmpty()) {
             page.addView(ui.muted("Nenhum registro ainda.", 14f, top = 16).apply { setPadding(ui.dp(24), ui.dp(16), 0, 0) })
             return
         }
+
+        val displayCount = a.logsDisplayLimit
+        val toShow = logs.take(displayCount)
+        head.addView(ui.muted("Exibindo ${toShow.size} de ${logs.size} registros.", 12f, top = 6))
+
         val fmt = SimpleDateFormat("dd/MM HH:mm:ss", Locale.getDefault())
         val list = ui.column().apply { setPadding(ui.dp(20), ui.dp(4), ui.dp(20), 0) }
         page.addView(list, ui.lp())
-        logs.take(250).forEach { e ->
+        toShow.forEach { e ->
             val color = when (e.type) {
                 LogType.COMPLETED -> Palette.Green
                 LogType.ANSWER -> Palette.confidence(e.confidence)
@@ -203,6 +220,22 @@ object Screens {
             list.addView(ui.text(e.message, 13.5f, Palette.Text))
             if (e.detail.isNotBlank()) list.addView(ui.muted(e.detail, 12f, top = 2))
             if (e.packageName.isNotBlank()) list.addView(ui.muted(e.packageName, 10.5f, top = 1))
+        }
+
+        if (logs.size > displayCount) {
+            val moreCard = ui.card(page, "Mais registros")
+            moreCard.addView(ui.muted("Restam ainda ${logs.size - displayCount} registros no histórico.", 12.5f))
+            ui.buttonRow(moreCard,
+                ui.button("Carregar +500", outlined = true) {
+                    a.logsDisplayLimit += 500
+                    a.render()
+                },
+                ui.button("Exibir todos", outlined = true) {
+                    a.logsDisplayLimit = logs.size
+                    a.render()
+                },
+                top = 10
+            )
         }
     }
 }

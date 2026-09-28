@@ -210,7 +210,11 @@ class MainActivity : Activity() {
 
     fun closeWizard() { mode = Mode.TABS; tab = TAB_PROFILE; render(resetScroll = true) }
 
+    var logsDisplayLimit = 300
+
     fun goToTab(t: Int) { mode = Mode.TABS; tab = t; render(resetScroll = true) }
+
+    fun viewHistory() { goToTab(TAB_LOGS) }
 
     // ── Importar / exportar JSON (Seção 35) ──────────────────────────
     private var exportTemplate = false

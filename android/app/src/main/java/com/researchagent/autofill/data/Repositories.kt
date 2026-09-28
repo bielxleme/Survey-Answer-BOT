@@ -285,7 +285,7 @@ class LogRepository(private val store: SecureStore) {
         }
     }
 
-    companion object { private const val FILE = "logs.enc"; private const val MAX = 600 }
+    companion object { private const val FILE = "logs.enc"; private const val MAX = 1_000_000 }
 }
 
 // ═══════════════════════════════════════════════════════════════════

@@ -23,6 +23,7 @@ interface FloatingPanelProps {
   guessMode?: boolean;
   onToggleGuessMode?: () => void;
   onShutdownApp?: () => void;
+  onViewHistory?: () => void;
 }
 
 export const FloatingPanel: React.FC<FloatingPanelProps> = ({
@@ -46,6 +47,7 @@ export const FloatingPanel: React.FC<FloatingPanelProps> = ({
   guessMode = false,
   onToggleGuessMode,
   onShutdownApp,
+  onViewHistory,
 }) => {
   const [copiedDiag, setCopiedDiag] = useState(false);
   const [teachingMode, setTeachingMode] = useState(false);
@@ -180,6 +182,18 @@ export const FloatingPanel: React.FC<FloatingPanelProps> = ({
           </div>
         )}
       </div>
+
+      {/* Ver Histórico Button */}
+      {onViewHistory && (
+        <button
+          onClick={onViewHistory}
+          className="w-full mb-2.5 py-2 px-3 bg-emerald-950/70 hover:bg-emerald-900/80 border border-emerald-700/60 text-emerald-300 font-bold text-xs rounded-xl flex items-center justify-center space-x-2 transition-all shadow-sm active:scale-98"
+          title="Ver histórico de respostas e registros no painel"
+        >
+          <FileText className="w-3.5 h-3.5 text-emerald-400" />
+          <span>Ver Histórico ({metrics.questionsAnswered} · máx 1.000.000)</span>
+        </button>
+      )}
 
       {/* v2.2 & v2.3 Advanced Tools: Gravar Logs, Ensinar, Chutar */}
       <div className="bg-slate-950/60 rounded-xl p-2 border border-slate-800/80 space-y-2 mb-2.5 text-xs">

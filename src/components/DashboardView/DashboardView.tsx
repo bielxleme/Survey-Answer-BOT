@@ -99,7 +99,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   return (
     <div className="max-w-6xl mx-auto py-6 px-4 space-y-6">
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl">
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Pesquisas</span>
           <div className="text-2xl font-black text-emerald-400 mt-1">{metrics.surveysCompleted}</div>
@@ -134,6 +134,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Alta Confiança</span>
           <div className="text-2xl font-black text-emerald-400 mt-1">{highConfidencePct}%</div>
           <span className="text-[10px] text-slate-500">Fatos comprovados</span>
+        </div>
+
+        <div
+          onClick={() => setActiveSubTab('audit')}
+          className="bg-slate-900 border border-emerald-500/30 hover:border-emerald-500/60 rounded-2xl p-4 shadow-xl cursor-pointer transition-all hover:scale-[1.02]"
+          title="Clique para ver o histórico completo"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Histórico</span>
+            <span className="text-[9px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded font-bold">Ver</span>
+          </div>
+          <div className="text-2xl font-black text-purple-400 mt-1">{logs.length}</div>
+          <span className="text-[10px] text-slate-500">Máx: 1.000.000</span>
         </div>
       </div>
 
@@ -173,6 +186,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </button>
           </div>
 
+          {/* Ver Histórico Button */}
+          <button
+            onClick={() => setActiveSubTab('audit')}
+            className="flex items-center space-x-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-emerald-500/40 text-emerald-400 font-bold text-xs rounded-xl shadow-md transition-all active:scale-95"
+            title="Ir direto para o histórico de perguntas gravadas"
+          >
+            <FileText className="w-3.5 h-3.5" />
+            <span>Ver Histórico</span>
+          </button>
+
           {/* Exportar Logs Button */}
           <button
             onClick={handleOpenExport}
@@ -202,13 +225,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </button>
             <button
               onClick={() => setActiveSubTab('audit')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors flex items-center space-x-1.5 ${
                 activeSubTab === 'audit'
-                  ? 'bg-emerald-500 text-slate-950'
+                  ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20'
                   : 'bg-slate-800 text-slate-400 hover:text-white'
               }`}
             >
-              Histórico de Perguntas ({logs.length})
+              <FileText className="w-3.5 h-3.5" />
+              <span>Histórico de Perguntas ({logs.length} / 1.000.000)</span>
             </button>
           </div>
 

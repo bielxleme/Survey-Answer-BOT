@@ -57,8 +57,8 @@ export default function App() {
     const controller = new AgentController(profile, {
       onStateChange: (state) => setAgentState(state),
       onMetricsUpdate: (updated) => setMetrics(updated),
-      onLogAdded: (entry) => setLogs((prev) => [entry, ...prev]),
-      onDiagnosticLogAdded: (dEntry) => setDiagnosticLogs((prev) => [dEntry, ...prev]),
+      onLogAdded: (entry) => setLogs((prev) => [entry, ...prev].slice(0, 1000000)),
+      onDiagnosticLogAdded: (dEntry) => setDiagnosticLogs((prev) => [dEntry, ...prev].slice(0, 1000000)),
       onInterventionRequired: (req) => setCurrentIntervention(req),
       onQuestionHighlight: (qid) => setHighlightedQuestionId(qid),
       onQuestionAnswered: (qid, val) => {
@@ -251,6 +251,7 @@ export default function App() {
               const summary = handleExportDiagnosticSummary();
               navigator.clipboard.writeText(summary);
             }}
+            onViewHistory={() => setActiveTab('dashboard')}
           />
         )}
 

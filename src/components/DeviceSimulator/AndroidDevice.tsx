@@ -27,6 +27,7 @@ interface AndroidDeviceProps {
   recordDiagnosticLogs?: boolean;
   onToggleDiagnosticLogs?: () => void;
   onExportDiagnosticSummary?: () => void;
+  onViewHistory?: () => void;
 }
 
 export const AndroidDevice: React.FC<AndroidDeviceProps> = ({
@@ -50,6 +51,7 @@ export const AndroidDevice: React.FC<AndroidDeviceProps> = ({
   recordDiagnosticLogs,
   onToggleDiagnosticLogs,
   onExportDiagnosticSummary,
+  onViewHistory,
 }) => {
   const [isPanelOpen, setIsPanelOpen] = useState(true);
   const [showAccessibilityOverlay, setShowAccessibilityOverlay] = useState(false);
@@ -195,6 +197,7 @@ export const AndroidDevice: React.FC<AndroidDeviceProps> = ({
                 recordDiagnosticLogs={recordDiagnosticLogs}
                 onToggleDiagnosticLogs={onToggleDiagnosticLogs}
                 onExportDiagnosticSummary={onExportDiagnosticSummary}
+                onViewHistory={onViewHistory}
               />
             )}
           </div>

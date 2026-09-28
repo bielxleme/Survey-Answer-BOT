@@ -397,6 +397,10 @@ class OverlayController(private val service: SurveyAccessibilityService) {
         })
         if (s.running) row2.addView(button("⏹ PARAR", cRed) { AgentController.stop() })
         col.addView(row2)
+        col.addView(button("📜 VER HISTÓRICO (${AppGraph.logs.logs.value.size})", cGreen) {
+            closePanel()
+            openApp(MainActivity.TAB_LOGS)
+        })
         val row3 = row()
         row3.addView(button("AJUSTES", cCard) { openApp(MainActivity.TAB_SETTINGS) })
         row3.addView(button("LOGS", cCard) { openApp(MainActivity.TAB_LOGS) })

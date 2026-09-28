@@ -86,6 +86,8 @@ object SettingsScreen {
             a.recreate()
         }
         priv.addView(ui.muted("Perfil, logs e aprendizado são criptografados localmente (AES-256-GCM) com chave segura vinculada ao dispositivo.", 12f, top = 8))
+        priv.addView(ui.muted("Capacidade de histórico ampliada: até 1.000.000 de registros com retenção local protegida.", 12f, top = 4))
+        ui.fullButton(priv, ui.button("VER HISTÓRICO", outlined = true) { a.viewHistory() }, top = 8)
 
         // Desinstalação e Preservação de Dados
         val retain = ui.card(page, "Manter dados ao desinstalar")
