@@ -19,6 +19,9 @@ import com.researchagent.autofill.data.SecureStore
 import com.researchagent.autofill.data.SettingsRepository
 import com.researchagent.autofill.data.StatsRepository
 import com.researchagent.autofill.notifications.Notifier
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 /** Injeção de dependências simples (sem frameworks) — um grafo por processo. */
 object AppGraph {

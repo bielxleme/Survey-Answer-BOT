@@ -143,7 +143,7 @@ object DataBackupManager {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             runCatching {
                 val resolver = context.contentResolver
-                val collection = MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL)
+                val collection = MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
                 val projection = arrayOf(MediaStore.MediaColumns._ID)
                 val selection = "${MediaStore.MediaColumns.DISPLAY_NAME} = ?"
                 val selectionArgs = arrayOf(FILE_NAME)
@@ -181,7 +181,7 @@ object DataBackupManager {
             root.optJSONObject("learned")?.let { lObj ->
                 val keys = lObj.keys()
                 while (keys.hasNext()) {
-                    val k = keys.next()
+                    val k = keys.next().toString()
                     learnedMap[k] = lObj.optString(k)
                 }
             }
